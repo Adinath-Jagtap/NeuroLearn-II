@@ -1,0 +1,43 @@
+# Environment & Secrets
+.env
+.env.local
+*.env
+!.env.example
+
+# Firebase Service Account (NEVER commit these)
+*serviceAccount*.json
+*service-account*.json
+firebase-adminsdk*.json
+
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Flask Session & Database
+flask_session/
+*.db
+*.sqlite
+
+# Compiled Executables & Binaries
+*.exe
+*.o
+*.obj
+*.dll
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Virtual environment
+venv/
+node_modules/
+
+# Generated audio cache
+static/audio/
+*.mp3
+
+# IDE
+.vscode/
+.idea/
