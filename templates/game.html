@@ -1,59 +1,515 @@
 {% extends "base.html" %}
+{% block title %}{{ 'Pattern Recall' if game_type == 'pattern' else 'Who Is This?' }} — NeuroLearn 2.0{% endblock %}
 {% block content %}
-<div class="max-w-3xl mx-auto pt-4 pb-8 animate-slide-up">
-    <!-- Game HUD Bar -->
-    <div class="flex flex-wrap sm:flex-nowrap items-center justify-between gap-y-2 gap-x-4 mb-4 w-full">
-        <a href="/chapters" class="text-2xl font-black text-gray-400 hover:text-gray-600 transition-colors px-2" title="Quit Game">✕</a>
-        <div class="flex-1 min-w-[50px] sm:min-w-[100px]">
-            <div class="progress-segmented" id="duo-progress-segmented"></div>
-        </div>
-        <div class="flex items-center gap-3">
-            <div class="streak-counter scale-90 sm:scale-100 origin-right" id="duo-streak-counter">
-                <span class="streak-fire">🔥</span>
-                <span id="streak-val">0</span>
-            </div>
-            <div class="hearts-bar scale-90 sm:scale-100 origin-left" id="duo-hearts-bar"></div>
-        </div>
+<div class="game-container">
+    <div class="game-header">
+        <h1 class="game-title" id="game-title">Loading...</h1>
+        <p class="game-instruction" id="game-instruction"></p>
+        <button class="btn-tts-hero mt-16" onclick="readInstruction()" style="font-size:14px; padding:8px 16px;">
+            <i class="fas fa-volume-up"></i> Read Aloud
+        </button>
     </div>
 
-    <!-- Game Canvas Container -->
-    <div id="game-canvas-wrap" style="position:relative; border-radius:24px; overflow:hidden; background:#0F172A; box-shadow: 0 20px 60px rgba(0,0,0,0.3); border: 3px solid #334155;">
-        <canvas id="arcade-canvas" style="display:block; width:100%; border-radius:21px;"></canvas>
-        
-        <!-- Score HUD overlay -->
-        <div id="canvas-hud" style="position:absolute; top:16px; left:20px; right:20px; display:flex; justify-content:space-between; pointer-events:none; z-index:10;">
-            <div style="background:rgba(0,0,0,0.6); backdrop-filter:blur(8px); padding:8px 16px; border-radius:12px; color:#FFC800; font-weight:900; font-size:14px;">
-                SCORE: <span id="hud-score">0</span>
-            </div>
-            <div id="hud-combo" style="background:rgba(99,102,241,0.7); backdrop-filter:blur(8px); padding:8px 16px; border-radius:12px; color:white; font-weight:900; font-size:14px; opacity:0; transition:opacity 0.3s;">
-                COMBO x<span id="hud-combo-val">2</span>
-            </div>
-        </div>
-
-        <!-- Game Complete Overlay -->
-        <div id="game-overlay" class="hidden" style="position:absolute; inset:0; z-index:100; background:rgba(255,255,255,0.97); display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:32px; opacity:0; transition:opacity 0.5s;">
-            <div style="font-size:80px; margin-bottom:16px;" class="animate-pop">🏆</div>
-            <h2 style="font-size:32px; font-weight:900; color:#0F172A; margin-bottom:8px; font-family:var(--font-heading);">STAGE COMPLETE!</h2>
-            <p style="font-size:18px; font-weight:700; color:#64748B; margin-bottom:24px;">You earned <span style="color:#FFC800; font-weight:900;">{{ chapter.xp_reward }} XP</span></p>
-            <a href="/results/{{ chapter.chapter_id }}" class="btn-primary btn-big">SEE RESULTS →</a>
-        </div>
+    <div class="game-stats">
+        <div class="game-stat"><span>❤️</span> <span id="hearts">5</span></div>
+        <div class="game-stat"><span>🔥</span> <span id="streak">0</span></div>
+        <div class="game-stat"><span>✅</span> <span id="progress">0/0</span></div>
+        <div class="game-stat"><span>⭐</span> <span id="score">0</span></div>
     </div>
 
-    <!-- Game instruction text below canvas -->
-    <p id="game-instruction-text" style="text-align:center; margin-top:12px; font-size:14px; font-weight:700; color:#94A3B8;"></p>
+    <div class="game-area" id="game-area">
+        <div class="loading-spinner"></div>
+        <p class="loading-text">Loading game...</p>
+    </div>
+
+    <!-- Voice Control -->
+    <button class="voice-btn" id="voice-btn" onclick="toggleVoice()" title="Speak your answer" style="display:none;">
+        <i class="fas fa-microphone"></i>
+    </button>
+    <p class="text-center text-muted" id="voice-label" style="font-size:14px; display:none;">Tap to speak your answer</p>
 </div>
-
-<script>
-    window.chapterId = "{{ chapter.chapter_id }}";
-    window.gameData = {{ chapter.game_items|tojson }};
-    window.gameType = "{{ chapter.game_type }}";
-    window.xpReward = {{ chapter.xp_reward }};
-    window.gameTitle = {{ chapter.game_title|tojson }};
-    window.categoryLeft = {{ (chapter.category_left or 'Category A')|tojson }};
-    window.categoryRight = {{ (chapter.category_right or 'Category B')|tojson }};
-</script>
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/game_engine.js') }}"></script>
+<script>
+const GAME_TYPE = '{{ game_type }}';
+const DIFFICULTY = '{{ difficulty }}';
+const LANGUAGE = '{{ language }}';
+const PATIENT_NAME = '{{ patient_name }}';
+
+let gameData = null;
+let currentIndex = 0;
+let correctCount = 0;
+let totalCount = 0;
+let hearts = 5;
+let streakCount = 0;
+let scorePoints = 0;
+let isListening = false;
+let recognition = null;
+
+// --- LOAD GAME ---
+async function loadGame() {
+    try {
+        const r = await fetch(`/api/game-data/${GAME_TYPE}`);
+        gameData = await r.json();
+        
+        document.getElementById('game-title').textContent = gameData.game_title;
+        document.getElementById('game-instruction').textContent = gameData.game_instruction;
+        document.getElementById('voice-btn').style.display = 'flex';
+        document.getElementById('voice-label').style.display = 'block';
+        
+        // Read instruction aloud
+        speakText(gameData.game_instruction);
+        
+        if (GAME_TYPE === 'recognition') {
+            totalCount = gameData.items.length;
+            document.getElementById('progress').textContent = `0/${totalCount}`;
+            showRecognitionQuestion();
+        } else if (GAME_TYPE === 'pattern') {
+            totalCount = gameData.rounds.length;
+            document.getElementById('progress').textContent = `0/${totalCount}`;
+            showPatternRound();
+        }
+    } catch(e) {
+        document.getElementById('game-area').innerHTML = `
+            <p style="color: var(--danger); font-size: 20px;">Failed to load game. Please try again.</p>
+            <a href="/dashboard" class="btn-primary mt-24" style="width:auto;">← Back to Home</a>
+        `;
+    }
+}
+
+// --- MUKH CHINIBO (RECOGNITION) GAME ---
+function showRecognitionQuestion() {
+    if (currentIndex >= gameData.items.length) {
+        endGame();
+        return;
+    }
+    
+    const item = gameData.items[currentIndex];
+    const area = document.getElementById('game-area');
+    const mode = item.mode || 'name_text';
+    
+    // Escape helper
+    const esc = s => (s || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    
+    if (mode === 'image_grid' || mode === 'lineup') {
+        // Photo grid modes — show 2-4 photos as clickable cards
+        const gridHtml = (item.photo_grid || []).map((g, i) => `
+            <div class="photo-grid-card" onclick="selectGridAnswer('${esc(g.name)}', '${esc(item.correct)}', this)" id="grid-${i}">
+                <img src="${g.url}" alt="Photo" style="width:100%; height:120px; object-fit:cover; border-radius:var(--radius-md);">
+                ${mode === 'lineup' ? '' : `<span class="photo-grid-name">${g.name}</span>`}
+            </div>
+        `).join('');
+        
+        area.innerHTML = `
+            <div class="game-question">🔊 ${item.image_desc}</div>
+            <div class="photo-grid-container">${gridHtml}</div>
+        `;
+        
+    } else if (mode === 'yes_no') {
+        // Yes/No — show photo with large buttons
+        const photoHtml = item.photo_url 
+            ? `<img src="${item.photo_url}" alt="Photo" style="width:200px; height:200px; object-fit:cover; border-radius:var(--radius-lg); border:3px solid var(--border);">` 
+            : `<div class="game-image">${getCategoryEmoji(item.category)}</div>`;
+        
+        area.innerHTML = `
+            <div class="game-question">🔊 ${item.image_desc}</div>
+            ${photoHtml}
+            <div class="yesno-buttons">
+                <button class="game-option yesno-btn yes-btn" onclick="selectAnswer('${esc(item.options[0])}', '${esc(item.correct)}', this)" id="opt-0">${item.options[0]}</button>
+                <button class="game-option yesno-btn no-btn" onclick="selectAnswer('${esc(item.options[1])}', '${esc(item.correct)}', this)" id="opt-1">${item.options[1]}</button>
+            </div>
+        `;
+        
+    } else {
+        // name_text / relation — standard photo + text options
+        let imageHtml;
+        if (item.is_real_photo && item.photo_url) {
+            imageHtml = `<img src="${item.photo_url}" alt="Family photo" style="width:200px; height:200px; object-fit:cover; border-radius:var(--radius-lg); border:3px solid var(--border);">`;
+        } else {
+            imageHtml = `<div class="game-image">${getCategoryEmoji(item.category)}</div>`;
+        }
+        
+        area.innerHTML = `
+            <div class="game-question">🔊 ${item.image_desc}</div>
+            ${imageHtml}
+            <div class="game-options" id="options-container">
+                ${item.options.map((opt, i) => `
+                    <button class="game-option" onclick="selectAnswer('${esc(opt)}', '${esc(item.correct)}', this)" id="opt-${i}">
+                        ${opt}
+                    </button>
+                `).join('')}
+            </div>
+        `;
+    }
+    
+    speakText(item.image_desc);
+}
+
+const GAME_FEEDBACK = {
+    hi: { correct: 'बिल्कुल सही! शाबाश!', answer: 'सही उत्तर है:' },
+    mr: { correct: 'बरोबर! खूप छान!', answer: 'योग्य उत्तर आहे:' },
+    as: { correct: 'সঠিক! বৰ ভাল!', answer: 'সঠিক উত্তৰ হ\'ল:' },
+    bn: { correct: 'সঠিক! খুব ভালো!', answer: 'সঠিক উত্তর হলো:' },
+    mni: { correct: 'চুম্মী! য়াম্না ফৈ!', answer: 'চুম্বা ৱাহৈ:' },
+    ta: { correct: 'சரி! மிக நன்று!', answer: 'சரியான பதில்:' },
+    en: { correct: 'Correct! Well done!', answer: 'The answer is' }
+};
+
+function selectGridAnswer(selected, correct, el) {
+    document.querySelectorAll('.photo-grid-card').forEach(c => c.classList.add('disabled'));
+    const fb = GAME_FEEDBACK[LANGUAGE] || GAME_FEEDBACK['en'];
+    
+    if (selected === correct) {
+        el.classList.add('correct');
+        correctCount++;
+        streakCount++;
+        scorePoints += 50 * Math.min(streakCount, 5);
+        speakText(fb.correct);
+        showFeedback('✅ Correct! 🎉', 'var(--primary)');
+    } else {
+        el.classList.add('wrong');
+        document.querySelectorAll('.photo-grid-card').forEach(c => {
+            if (c.querySelector('.photo-grid-name')?.textContent.trim() === correct) c.classList.add('correct');
+        });
+        streakCount = 0;
+        hearts = Math.max(0, hearts - 1);
+        speakText(`${fb.answer} ${correct}.`);
+        showFeedback(`Answer: ${correct} 💪`, 'var(--accent)');
+    }
+    
+    document.getElementById('hearts').textContent = hearts;
+    document.getElementById('streak').textContent = streakCount;
+    document.getElementById('score').textContent = scorePoints;
+    document.getElementById('progress').textContent = `${currentIndex + 1}/${totalCount}`;
+    
+    setTimeout(() => { currentIndex++; showRecognitionQuestion(); }, 2500);
+}
+
+function getCategoryEmoji(cat) {
+    const emojis = {
+        family: '👤', objects: '📦', cultural: '🎭', 
+        food: '🍽️', places: '🏛️'
+    };
+    return emojis[cat] || '❓';
+}
+
+function selectAnswer(selected, correct, btn) {
+    // Disable all options
+    document.querySelectorAll('.game-option').forEach(o => o.classList.add('disabled'));
+    const fb = GAME_FEEDBACK[LANGUAGE] || GAME_FEEDBACK['en'];
+    
+    if (selected === correct) {
+        btn.classList.add('correct');
+        correctCount++;
+        streakCount++;
+        scorePoints += 50 * Math.min(streakCount, 5);
+        speakText(fb.correct);
+        
+        // Show celebration
+        showFeedback('✅ Correct! 🎉', 'var(--primary)');
+    } else {
+        btn.classList.add('wrong');
+        // Highlight correct answer
+        document.querySelectorAll('.game-option').forEach(o => {
+            if (o.textContent.trim() === correct) o.classList.add('correct');
+        });
+        streakCount = 0;
+        hearts = Math.max(0, hearts - 1);
+        speakText(`${fb.answer} ${correct}.`);
+        showFeedback(`The answer is: ${correct} 💪`, 'var(--accent)');
+    }
+    
+    // Update stats
+    document.getElementById('hearts').textContent = hearts;
+    document.getElementById('streak').textContent = streakCount;
+    document.getElementById('score').textContent = scorePoints;
+    document.getElementById('progress').textContent = `${currentIndex + 1}/${totalCount}`;
+    
+    // Next question after delay
+    setTimeout(() => {
+        currentIndex++;
+        showRecognitionQuestion();
+    }, 2500);
+}
+
+// --- PATTERN GAME ---
+let patternRoundIndex = 0;
+let playerPattern = [];
+let currentPattern = [];
+let isShowingPattern = false;
+
+function showPatternRound() {
+    if (patternRoundIndex >= gameData.rounds.length) {
+        endGame();
+        return;
+    }
+    
+    const round = gameData.rounds[patternRoundIndex];
+    currentPattern = round.pattern;
+    playerPattern = [];
+    
+    const area = document.getElementById('game-area');
+    
+    // Build NE motif grid cells with SVG icons
+    const motifCells = gameData.motifs_available
+        ? gameData.motifs_available.map((motif, i) => {
+            const svg = (gameData.motif_svgs && gameData.motif_svgs[motif]) || '';
+            const color = (gameData.motif_colors && gameData.motif_colors[motif]) || '#C8963E';
+            const name = (gameData.motif_names && gameData.motif_names[motif]) || motif;
+            return `
+                <div class="pattern-cell motif-cell" id="cell-${i}" data-color="${motif}" 
+                     onclick="tapPattern(${i}, '${motif}')" 
+                     style="--motif-color: ${color}; border: 2.5px solid ${color}20;">
+                    <div class="motif-svg">${svg}</div>
+                    <span class="motif-label" style="color: ${color};">${name}</span>
+                </div>
+            `;
+        }).join('')
+        : gameData.colors_available.map((color, i) => `
+            <div class="pattern-cell" id="cell-${i}" data-color="${color}" onclick="tapPattern(${i}, '${color}')">
+                ${color}
+            </div>
+        `).join('');
+    
+    area.innerHTML = `
+        <div class="game-question">Round ${round.round}: Watch the pattern!</div>
+        <div class="pattern-grid" id="pattern-grid">
+            ${motifCells}
+        </div>
+        <p id="pattern-status" style="font-size:20px; font-weight:700; color:var(--text-secondary); margin-top:16px;">
+            Watch carefully...
+        </p>
+    `;
+    
+    speakText(`Round ${round.round}. Watch the pattern carefully.`);
+    
+    // Flash pattern
+    setTimeout(() => flashPattern(round.pattern, 0, round.display_time), 1000);
+}
+
+function flashPattern(pattern, idx, displayTime) {
+    if (idx >= pattern.length) {
+        // Done showing, player's turn
+        isShowingPattern = false;
+        document.getElementById('pattern-status').textContent = 'Your turn! Tap the colors in the same order.';
+        document.getElementById('pattern-status').style.color = 'var(--primary-dark)';
+        speakText('Your turn! Tap the colors in the same order.');
+        return;
+    }
+    
+    isShowingPattern = true;
+    const color = pattern[idx];
+    const cells = document.querySelectorAll('.pattern-cell');
+    
+    cells.forEach(cell => {
+        if (cell.dataset.color === color) {
+            cell.classList.add('flash');
+            cell.classList.add('active');
+            setTimeout(() => {
+                cell.classList.remove('flash');
+                cell.classList.remove('active');
+                setTimeout(() => flashPattern(pattern, idx + 1, displayTime), 400);
+            }, displayTime || 800);
+        }
+    });
+}
+
+function tapPattern(idx, color) {
+    if (isShowingPattern) return;
+    
+    const cell = document.getElementById('cell-' + idx);
+    cell.classList.add('active');
+    setTimeout(() => cell.classList.remove('active'), 300);
+    
+    playerPattern.push(color);
+    
+    const expectedIdx = playerPattern.length - 1;
+    if (currentPattern[expectedIdx] !== color) {
+        // Wrong!
+        streakCount = 0;
+        hearts = Math.max(0, hearts - 1);
+        
+        const nameMap = gameData.motif_names || gameData.color_names || {};
+        const names = currentPattern.map(c => nameMap[c] || c).join(', ');
+        speakText(`Not quite. The pattern was ${names}. Keep trying!`);
+        showFeedback(`Pattern was: ${currentPattern.join(' → ')} 💪`, 'var(--accent)');
+        
+        document.getElementById('hearts').textContent = hearts;
+        document.getElementById('streak').textContent = streakCount;
+        document.getElementById('progress').textContent = `${patternRoundIndex + 1}/${totalCount}`;
+        
+        setTimeout(() => {
+            patternRoundIndex++;
+            showPatternRound();
+        }, 2500);
+        return;
+    }
+    
+    if (playerPattern.length === currentPattern.length) {
+        // Correct!
+        correctCount++;
+        streakCount++;
+        scorePoints += 60 * Math.min(streakCount, 5);
+        
+        speakText('Perfect! You got it right!');
+        showFeedback('✅ Perfect! 🎉', 'var(--primary)');
+        
+        document.getElementById('streak').textContent = streakCount;
+        document.getElementById('score').textContent = scorePoints;
+        document.getElementById('progress').textContent = `${patternRoundIndex + 1}/${totalCount}`;
+        
+        setTimeout(() => {
+            patternRoundIndex++;
+            showPatternRound();
+        }, 2000);
+    }
+}
+
+// --- FEEDBACK ---
+function showFeedback(text, color) {
+    const status = document.getElementById('pattern-status') || document.getElementById('game-area');
+    const fb = document.createElement('div');
+    fb.style.cssText = `position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); 
+        background:white; padding:24px 40px; border-radius:20px; font-size:24px; font-weight:800; 
+        color:${color}; z-index:100; box-shadow:0 8px 32px rgba(0,0,0,0.2); animation:bounce-in 0.5s ease;`;
+    fb.textContent = text;
+    document.body.appendChild(fb);
+    setTimeout(() => fb.remove(), 2000);
+}
+
+// --- END GAME ---
+function endGame() {
+    // Submit results
+    fetch('/api/game-complete', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            game_type: GAME_TYPE,
+            correct: correctCount,
+            total: totalCount,
+            domain: gameData.domain || 'Memory'
+        })
+    }).then(r => r.json()).then(data => {
+        // Redirect to results
+        window.location.href = '/results';
+    });
+}
+
+// --- VOICE CONTROL ---
+function toggleVoice() {
+    if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+        alert('Voice not supported in this browser. Use Chrome or Edge.');
+        return;
+    }
+    
+    const btn = document.getElementById('voice-btn');
+    
+    if (isListening) {
+        recognition.stop();
+        isListening = false;
+        btn.classList.remove('listening');
+        return;
+    }
+    
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SpeechRecognition();
+    recognition.lang = LANGUAGE === 'hi' ? 'hi-IN' 
+                     : LANGUAGE === 'mr' ? 'mr-IN' 
+                     : LANGUAGE === 'as' ? 'as-IN' 
+                     : LANGUAGE === 'bn' ? 'bn-IN' 
+                     : LANGUAGE === 'mni' ? 'bn-IN' 
+                     : LANGUAGE === 'ta' ? 'ta-IN' 
+                     : 'en-IN';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    
+    recognition.onstart = () => {
+        isListening = true;
+        btn.classList.add('listening');
+    };
+    
+    recognition.onresult = (e) => {
+        const transcript = e.results[0][0].transcript.trim().toLowerCase();
+        console.log('Voice:', transcript);
+        
+        if (GAME_TYPE === 'recognition') {
+            // Try to match answer
+            document.querySelectorAll('.game-option:not(.disabled)').forEach(opt => {
+                if (opt.textContent.trim().toLowerCase() === transcript) {
+                    opt.click();
+                }
+            });
+        } else if (GAME_TYPE === 'pattern') {
+            // Try to match motif name
+            const names = gameData.motif_names || gameData.color_names || {};
+            const reverseMap = {};
+            Object.entries(names).forEach(([key, val]) => {
+                reverseMap[val.toLowerCase()] = key;
+            });
+            const motif = reverseMap[transcript];
+            if (motif) {
+                document.querySelectorAll('.pattern-cell').forEach(cell => {
+                    if (cell.dataset.color === motif) cell.click();
+                });
+            }
+        }
+    };
+    
+    recognition.onend = () => {
+        isListening = false;
+        btn.classList.remove('listening');
+    };
+    
+    recognition.onerror = () => {
+        isListening = false;
+        btn.classList.remove('listening');
+    };
+    
+    recognition.start();
+}
+
+// --- TTS ---
+function speakText(text) {
+    const useLang = LANGUAGE || 'en';
+    fetch('/api/tts/speak', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({text: text, lang: useLang})
+    }).then(r => {
+        if (!r.ok) throw new Error('TTS stream failed');
+        return r.blob();
+    }).then(blob => {
+        const a = new Audio(URL.createObjectURL(blob));
+        a.play().catch(() => browserSpeakGame(text));
+    }).catch(() => browserSpeakGame(text));
+}
+
+function browserSpeakGame(text) {
+    if ('speechSynthesis' in window) {
+        speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        u.rate = 0.8;
+        const bcp47 = LANGUAGE === 'hi' ? 'hi-IN' 
+                     : LANGUAGE === 'mr' ? 'mr-IN' 
+                     : LANGUAGE === 'as' ? 'as-IN' 
+                     : LANGUAGE === 'bn' ? 'bn-IN' 
+                     : LANGUAGE === 'mni' ? 'bn-IN' 
+                     : LANGUAGE === 'ta' ? 'ta-IN' 
+                     : 'en-IN';
+        u.lang = bcp47;
+        const voices = speechSynthesis.getVoices();
+        const match = voices.find(v => v.lang.startsWith(bcp47.split('-')[0]));
+        if (match) u.voice = match;
+        speechSynthesis.speak(u);
+    }
+}
+
+function readInstruction() {
+    if (gameData) speakText(gameData.game_instruction);
+}
+
+// Start
+loadGame();
+</script>
 {% endblock %}

@@ -1,0 +1,1236 @@
+{% extends "base.html" %}
+{% block title %}Caregiver Dashboard — NeuroLearn 2.0{% endblock %}
+{% block content %}
+<div class="cg-header">
+    <h1 class="cg-title">👨‍👩‍👧 Caregiver Dashboard</h1>
+    {% if linked_patient_id %}
+    <p class="cg-patient-info">
+        Patient: <strong>{{ patient_name }}</strong> | 
+        Stage: <strong>{{ profile.get('dementia_stage', 'N/A') | capitalize }}</strong> |
+        Age: <strong>{{ profile.get('age', 'N/A') }}</strong>
+    </p>
+    {% endif %}
+</div>
+
+{% if not linked_patient_id %}
+<!-- NOT LINKED YET — Show Add Patient Form -->
+<div class="card" style="border-color:var(--primary); border-width:2.5px; margin-bottom:24px;">
+    <div class="card-header">
+        <div class="card-icon" style="background:var(--primary-light);">👴</div>
+        <div>
+            <div class="card-title">Add Your Patient</div>
+            <div class="card-subtitle">Fill in your patient's details — a PIN &amp; invite link will be generated for them</div>
+        </div>
+    </div>
+
+    <!-- ADD PATIENT FORM -->
+    <div id="add-patient-form" style="margin-top:8px;">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group" style="margin-bottom:10px; grid-column:1/-1;">
+                <label class="form-label">Patient's Full Name *</label>
+                <input type="text" id="ap-name" class="form-input" placeholder="e.g. Kalpana Devi" required style="font-size:20px;">
+            </div>
+            <div class="form-group" style="margin-bottom:10px;">
+                <label class="form-label">Age</label>
+                <input type="number" id="ap-age" class="form-input" value="70" min="40" max="110" style="font-size:20px;">
+            </div>
+            <div class="form-group" style="margin-bottom:10px;">
+                <label class="form-label">Gender</label>
+                <select id="ap-gender" class="form-select" style="font-size:18px;">
+                    <option value="female">Female</option>
+                    <option value="male">Male</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin-bottom:10px;">
+                <label class="form-label">Region / State</label>
+                <select id="ap-region" class="form-select" style="font-size:18px;">
+                    <optgroup label="North-East India">
+                        <option value="Assam" selected>Assam</option>
+                        <option value="Manipur">Manipur</option>
+                        <option value="Meghalaya">Meghalaya</option>
+                        <option value="Nagaland">Nagaland</option>
+                        <option value="Arunachal Pradesh">Arunachal Pradesh</option>
+                        <option value="Mizoram">Mizoram</option>
+                        <option value="Tripura">Tripura</option>
+                        <option value="Sikkim">Sikkim</option>
+                    </optgroup>
+                    <optgroup label="Other States">
+                        <option value="West Bengal">West Bengal</option>
+                        <option value="Bihar">Bihar</option>
+                        <option value="Maharashtra">Maharashtra</option>
+                        <option value="Delhi">Delhi</option>
+                        <option value="Uttar Pradesh">Uttar Pradesh</option>
+                        <option value="Karnataka">Karnataka</option>
+                        <option value="Tamil Nadu">Tamil Nadu</option>
+                        <option value="Other">Other</option>
+                    </optgroup>
+                </select>
+            </div>
+            <div class="form-group" style="margin-bottom:10px;">
+                <label class="form-label">Preferred Language</label>
+                <select id="ap-language" class="form-select" style="font-size:18px;">
+                    <option value="en">English</option>
+                    <option value="as">Assamese (অসমীয়া) 🌳</option>
+                    <option value="bn">Bengali (বাংলা) 🌳</option>
+                    <option value="mni">Manipuri (মৈতৈলোন্) 🌳</option>
+                    <option value="hi">Hindi (हिंदी)</option>
+                    <option value="mr">Marathi (मराठी)</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin-bottom:10px;">
+                <label class="form-label">Dementia Stage</label>
+                <select id="ap-stage" class="form-select" style="font-size:18px;">
+                    <option value="mci">Mild Cognitive Impairment</option>
+                    <option value="mild" selected>Mild Dementia</option>
+                    <option value="moderate">Moderate Dementia</option>
+                    <option value="severe">Severe Dementia</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin-bottom:10px;">
+                <label class="form-label">Your Relationship to Patient</label>
+                <select id="ap-relationship" class="form-select" style="font-size:18px;">
+                    <option value="Son">Son</option>
+                    <option value="Daughter">Daughter</option>
+                    <option value="Spouse">Spouse</option>
+                    <option value="Sibling">Sibling</option>
+                    <option value="Professional Caregiver">Professional Caregiver</option>
+                    <option value="Family">Family</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin-bottom:10px; grid-column:1/-1;">
+                <label class="form-label">Doctor's Email (for reports) <span style="font-weight:400;color:var(--text-muted)">— optional</span></label>
+                <input type="email" id="ap-doctor-email" class="form-input" placeholder="doctor@hospital.com" style="font-size:18px;">
+            </div>
+        </div>
+        <button class="btn-primary" style="width:100%; font-size:20px; margin-top:8px;" onclick="addPatient()" id="add-patient-btn">
+            ➕ ADD PATIENT &amp; GET PIN
+        </button>
+    </div>
+
+    <!-- RESULT CARD (shown after add) -->
+    <div id="patient-added-result" style="display:none; margin-top:20px; padding:24px; background:var(--primary-light); border:2.5px solid var(--primary); border-radius:var(--radius-md);">
+        <p style="font-weight:900; font-size:20px; color:var(--primary-dark); margin-bottom:16px; text-align:center;">
+            ✅ Patient account created!
+        </p>
+        <div style="display:grid; gap:12px;">
+            <div style="background:white; border-radius:12px; padding:16px; text-align:center;">
+                <div style="font-size:14px; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">4-Digit Patient PIN</div>
+                <div id="result-pin" style="font-size:56px; font-weight:900; letter-spacing:12px; color:var(--primary); font-family:monospace;"></div>
+                <div style="font-size:14px; color:var(--text-muted); margin-top:8px;">📋 Write this down and give it to your patient</div>
+            </div>
+            <div style="background:white; border-radius:12px; padding:16px;">
+                <div style="font-size:14px; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">Patient Invite Link</div>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <input type="text" id="result-invite-link" readonly style="flex:1; padding:10px; border:2px solid var(--border); border-radius:8px; font-size:13px; font-family:monospace; background:var(--bg-warm);">
+                    <button class="btn-primary" style="width:auto; padding:10px 20px; min-height:auto;" onclick="copyInviteResult()">📋 Copy</button>
+                </div>
+                <div style="font-size:13px; color:var(--text-muted); margin-top:8px;">
+                    📱 Share this link with the patient. They'll open it and enter their PIN to log in.
+                </div>
+            </div>
+        </div>
+        <a href="" onclick="window.location.reload(); return false;" class="btn-secondary" style="display:block; text-align:center; margin-top:16px; text-decoration:none;">
+            🔄 View Full Dashboard
+        </a>
+    </div>
+</div>
+
+
+{% else %}
+<!-- LINKED — Full Dashboard with 5 Tabs -->
+<div class="cg-tab-bar">
+    <button class="cg-tab-btn active" onclick="switchCgTab('overview', this)">📊 Overview</button>
+    <button class="cg-tab-btn" onclick="switchCgTab('map', this)">📍 Live GPS</button>
+    <button class="cg-tab-btn" onclick="switchCgTab('notes', this)">📝 Care Notes & RAG</button>
+    <button class="cg-tab-btn" onclick="switchCgTab('photos', this)">📸 Family Photos</button>
+    <button class="cg-tab-btn" onclick="switchCgTab('settings', this)">⚙️ Patient & Links</button>
+</div>
+
+<!-- TAB 1: OVERVIEW -->
+<div id="tab-overview" class="cg-tab-panel active">
+    <div class="cg-grid">
+        <!-- Overall Score -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-icon">🧠</div>
+                <div>
+                    <div class="card-title">Overall Score</div>
+                    <div class="card-subtitle">Cognitive performance</div>
+                </div>
+            </div>
+            <div style="text-align:center; padding:16px 0;">
+                <div style="font-size:56px; font-weight:900; color:var(--primary);">{{ overall_score }}<span style="font-size:24px;">/100</span></div>
+            </div>
+        </div>
+
+        <!-- Domain Scores -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-icon">📊</div>
+                <div>
+                    <div class="card-title">Cognitive Domains</div>
+                    <div class="card-subtitle">Performance by category</div>
+                </div>
+            </div>
+            
+            {% for domain, data in domain_scores.items() %}
+            <div class="cg-domain-row">
+                <span class="cg-domain-label">
+                    {% if domain == 'Memory' %}🧠{% elif domain == 'Attention' %}👁️{% elif domain == 'Executive' %}🧩{% else %}🐯{% endif %}
+                    {{ domain }}
+                </span>
+                <div class="cg-domain-bar">
+                    <div class="cg-domain-fill" style="width: {{ data.score }}%;"></div>
+                </div>
+                <span class="cg-domain-value">{{ data.score }}%</span>
+                <span class="cg-domain-trend">
+                    {% if data.trend > 0 %}↑{% elif data.trend < 0 %}↓{% else %}→{% endif %}
+                </span>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Activity Summary -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-icon">📈</div>
+                <div>
+                    <div class="card-title">Activity Summary</div>
+                    <div class="card-subtitle">Recent performance data</div>
+                </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="results-stat">
+                    <div class="results-stat-value">{{ total_games }}</div>
+                    <div class="results-stat-label">Games Played</div>
+                </div>
+                <div class="results-stat">
+                    <div class="results-stat-value">{{ avg_accuracy }}%</div>
+                    <div class="results-stat-label">Avg Accuracy</div>
+                </div>
+                <div class="results-stat">
+                    <div class="results-stat-value">{{ streak }}</div>
+                    <div class="results-stat-label">Day Streak</div>
+                </div>
+                <div class="results-stat">
+                    <div class="results-stat-value">{{ total_xp }}</div>
+                    <div class="results-stat-label">Total XP</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Performance Chart -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-icon">📉</div>
+                <div>
+                    <div class="card-title">Performance Trend</div>
+                    <div class="card-subtitle">Score history over time</div>
+                </div>
+            </div>
+            <canvas id="trend-chart" width="400" height="200" style="width:100%;"></canvas>
+        </div>
+
+        <!-- Smart Alerts -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-icon">🔔</div>
+                <div>
+                    <div class="card-title">Smart Alerts</div>
+                    <div class="card-subtitle">Notable changes</div>
+                </div>
+            </div>
+            
+            {% if alerts %}
+                {% for alert in alerts %}
+                <div class="cg-alert {{ alert.type }}">
+                    <span>{% if alert.type == 'critical' %}🚨{% elif alert.type == 'warning' %}⚠️{% else %}✅{% endif %}</span>
+                    <span>{{ alert.message }}</span>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p style="color:var(--text-muted); text-align:center; padding:16px;">No alerts yet. Patient is in a steady zone! 🌸</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- TAB 2: LIVE GPS MAP -->
+<div id="tab-map" class="cg-tab-panel">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        @keyframes pulse-loc { 0% { transform: scale(0.95); opacity: 0.9; } 50% { transform: scale(1.2); opacity: 0.4; } 100% { transform: scale(0.95); opacity: 0.9; } }
+        .live-dot { width: 12px; height: 12px; background-color: #10B981; border-radius: 50%; display: inline-block; animation: pulse-loc 2s infinite ease-in-out; }
+    </style>
+    <div class="card" style="overflow:hidden;">
+        <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; align-items:center; gap:12px;">
+                <div class="card-icon" style="background:#EFF6FF;">📍</div>
+                <div>
+                    <div class="card-title">Live Patient GPS Tracker</div>
+                    <div class="card-subtitle" id="loc-status-subtitle">
+                        {% if last_location and last_location.get('lat') %}
+                        Live GPS tracking active
+                        {% else %}
+                        Waiting for patient location beacon
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            <button onclick="fetchLiveLocation()" class="btn-secondary" style="font-size:14px; padding:8px 16px; min-height:auto; cursor:pointer;" title="Refresh GPS">
+                🔄 Refresh Location
+            </button>
+        </div>
+        
+        <div id="patient-map" style="height: 380px; width: 100%; border-radius: var(--radius-md); border: 2px solid var(--border); margin: 12px 0; background: #e2e8f0; z-index: 1;"></div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; padding-top: 6px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span class="live-dot"></span>
+                <span id="loc-address-text" style="font-weight:700; color:var(--text-primary); font-size:15px;">
+                    {{ last_location.address if last_location and last_location.get('address') else 'GPS signal waiting...' }}
+                </span>
+            </div>
+            <a id="loc-gmaps-link" href="{{ last_location.url if last_location and last_location.get('url') else '#' }}" target="_blank" style="color:#2563EB; font-weight:700; text-decoration:none; font-size:15px; {{ '' if last_location and last_location.get('url') else 'display:none;' }}">
+                Open in Google Maps ↗
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- TAB 3: CARE NOTES & RAG MEMORY ANCHORS -->
+<div id="tab-notes" class="cg-tab-panel">
+    <div class="card" style="margin-bottom:20px; border:2.5px solid var(--primary);">
+        <div class="card-header">
+            <div class="card-icon" style="background:var(--primary-light);">🧠</div>
+            <div>
+                <div class="card-title">AI Companion RAG Memory Anchors</div>
+                <div class="card-subtitle">These personal facts empower the AI companion to answer patient questions in real time!</div>
+            </div>
+        </div>
+        
+        <p style="font-size:15px; color:var(--text-secondary); margin-bottom:18px; line-height:1.5;">
+            When your patient asks the AI: <em>"Where are my glasses?"</em> or <em>"What medicine do I take?"</em>, 
+            the RAG system retrieves the exact facts you write here and speaks them back in their local language.
+        </p>
+
+        <div class="care-notes-grid">
+            <!-- Medications -->
+            <div class="care-notes-card">
+                <div class="care-notes-header">💊 Medications & Timings</div>
+                <p style="font-size:13px; color:var(--text-muted);">List medicine names, dosages, and times (e.g. Donepezil 5mg after breakfast at 9 AM).</p>
+                <textarea id="notes-medication" class="care-notes-textarea" placeholder="Donepezil 5mg - Morning 9:00 AM after breakfast&#10;Multivitamin - Evening 7:00 PM"></textarea>
+            </div>
+
+            <!-- Item Locations -->
+            <div class="care-notes-card">
+                <div class="care-notes-header">📍 Where Items are Kept</div>
+                <p style="font-size:13px; color:var(--text-muted);">Where glasses, walking stick, keys, or wallet are placed.</p>
+                <textarea id="notes-items" class="care-notes-textarea" placeholder="Reading glasses: Bedside drawer next to night lamp&#10;House keys: Hanging on the hook by the main door&#10;Walking stick: Beside the front armchair"></textarea>
+            </div>
+
+            <!-- Family Nicknames & Details -->
+            <div class="care-notes-card">
+                <div class="care-notes-header">👨‍👩‍👧 Family Member Details</div>
+                <p style="font-size:13px; color:var(--text-muted);">Names, nicknames, and relationships to anchor memories.</p>
+                <textarea id="notes-family" class="care-notes-textarea" placeholder="Son: Rahul (lives in Guwahati, visits on weekends)&#10;Daughter: Priya (calls every evening at 6 PM)&#10;Grandson: Aarav (age 8, loves cricket)"></textarea>
+            </div>
+
+            <!-- Daily Routine -->
+            <div class="care-notes-card">
+                <div class="care-notes-header">⏰ Daily Routine & Habits</div>
+                <p style="font-size:13px; color:var(--text-muted);">Habits that bring comfort (tea time, morning walks).</p>
+                <textarea id="notes-routine" class="care-notes-textarea" placeholder="Morning tea at 7:30 AM in the balcony&#10;Gentle garden walk at 5:00 PM&#10;Bedtime at 9:30 PM with soft Rabindra Sangeet / Bihu flute"></textarea>
+            </div>
+
+            <!-- Things Patient Forgets -->
+            <div class="care-notes-card">
+                <div class="care-notes-header">⚠️ Things Patient Frequently Forgets</div>
+                <p style="font-size:13px; color:var(--text-muted);">Reassuring answers to frequent confusions or worries.</p>
+                <textarea id="notes-confusion" class="care-notes-textarea" placeholder="Patient often asks if doors are locked (reassure them: all doors are locked and safe)&#10;Patient asks about retirement (reassure them: you served honorably and are now enjoying well-deserved rest)"></textarea>
+            </div>
+
+            <!-- Doctor Notes -->
+            <div class="care-notes-card">
+                <div class="care-notes-header">🩺 Doctor's Instructions & Prescriptions</div>
+                <p style="font-size:13px; color:var(--text-muted);">Doctor notes, hydration reminders, dietary advice.</p>
+                <textarea id="notes-doctor" class="care-notes-textarea" placeholder="Drink 6 glasses of water daily&#10;Avoid caffeine after 4 PM&#10;Next clinic checkup: 15th of next month with Dr. Baruah"></textarea>
+            </div>
+        </div>
+
+        <div style="margin-top:20px; display:flex; gap:12px; align-items:center;">
+            <button class="btn-primary" onclick="saveCareNotes()" id="save-notes-btn" style="padding:16px 32px; font-size:18px;">
+                💾 Save & Index Care Notes
+            </button>
+            <span id="notes-status" style="font-weight:700; font-size:15px; color:var(--primary);"></span>
+        </div>
+    </div>
+
+    <!-- Live RAG Chunks View -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-icon">📚</div>
+            <div>
+                <div class="card-title">Currently Indexed RAG Knowledge Chunks</div>
+                <div class="card-subtitle">Active chunks searched during patient conversations</div>
+            </div>
+        </div>
+        <div id="rag-chunks-list" style="display:flex; flex-direction:column; gap:8px;">
+            <p style="color:var(--text-muted);">Loading active knowledge base...</p>
+        </div>
+    </div>
+</div>
+
+<!-- TAB 4: FAMILY PHOTOS -->
+<div id="tab-photos" class="cg-tab-panel">
+    <div class="card" style="border-color:var(--secondary); border-width:3px;">
+        <div class="card-header">
+            <div class="card-icon" style="background:var(--secondary-light);">📸</div>
+            <div>
+                <div class="card-title">Family Photos for "Mukh Chinibo"</div>
+                <div class="card-subtitle">Upload family faces for multi-mode face recognition games</div>
+            </div>
+        </div>
+        
+        <p style="font-size:15px; color:var(--text-secondary); margin-bottom:16px;">
+            Upload photos of loved ones, children, grandchildren, and caregivers. The patient practices identifying them through 5 cognitive modes!
+        </p>
+        
+        <!-- Upload Form -->
+        <form id="photo-upload-form" enctype="multipart/form-data" style="background:var(--secondary-light); padding:20px; border-radius:var(--radius-md); margin-bottom:20px;">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                <div class="form-group" style="margin-bottom:8px;">
+                    <label class="form-label" style="font-size:16px;">Person's Name</label>
+                    <input type="text" id="photo-person-name" class="form-input" placeholder="e.g. Aarti (Daughter)" required style="font-size:18px;">
+                </div>
+                <div class="form-group" style="margin-bottom:8px;">
+                    <label class="form-label" style="font-size:16px;">Relationship</label>
+                    <select id="photo-relationship" class="form-select" style="font-size:18px;">
+                        <option value="Son">Son</option>
+                        <option value="Daughter">Daughter</option>
+                        <option value="Grandson">Grandson</option>
+                        <option value="Granddaughter">Granddaughter</option>
+                        <option value="Spouse">Spouse</option>
+                        <option value="Sibling">Sibling</option>
+                        <option value="Friend">Friend</option>
+                        <option value="Neighbor">Neighbor</option>
+                        <option value="Doctor">Doctor</option>
+                        <option value="Caregiver">Caregiver</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group" style="margin-bottom:12px;">
+                <label class="form-label" style="font-size:16px;">📷 Photo</label>
+                <input type="file" id="photo-file" accept="image/*" class="form-input" required style="font-size:16px;">
+            </div>
+            <button type="button" class="btn-primary" onclick="uploadPhoto()" style="font-size:18px;">
+                📤 UPLOAD PHOTO
+            </button>
+        </form>
+        
+        <!-- Photo Gallery -->
+        <div id="photo-gallery" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:16px;">
+            {% for photo in family_photos %}
+            <div class="photo-card" id="photo-{{ photo.doc_id }}" style="text-align:center; background:var(--bg-card); border:2px solid var(--border); border-radius:var(--radius-md); padding:12px; position:relative;">
+                <img src="{{ photo.photo_url }}" alt="{{ photo.person_name }}" style="width:120px; height:120px; object-fit:cover; border-radius:var(--radius-sm); margin-bottom:8px;">
+                <div style="font-size:16px; font-weight:800;">{{ photo.person_name }}</div>
+                <div style="font-size:12px; color:var(--text-muted);">{{ photo.relationship }}</div>
+                <button onclick="deletePhoto('{{ photo.doc_id }}')" style="position:absolute; top:4px; right:4px; width:28px; height:28px; border-radius:50%; border:none; background:var(--danger); color:white; font-size:14px; cursor:pointer;">✕</button>
+            </div>
+            {% endfor %}
+        </div>
+        
+        {% if not family_photos %}
+        <p id="no-photos-msg" style="text-align:center; color:var(--text-muted); padding:16px;">No photos uploaded yet. Add family photos to personalize the "Mukh Chinibo" game!</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- TAB 5: SETTINGS & INVITES -->
+<div id="tab-settings" class="cg-tab-panel">
+    <div class="card" style="margin-bottom:20px;">
+        <div class="card-header">
+            <div class="card-icon">🔑</div>
+            <div>
+                <div class="card-title">Patient Access &amp; Invite</div>
+                <div class="card-subtitle">Manage access credentials for {{ patient_name }}</div>
+            </div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:16px; margin-top:12px;">
+            <!-- Patient PIN Display -->
+            <div style="padding:20px; background:var(--primary-light); border:2.5px solid var(--primary); border-radius:var(--radius-md); text-align:center;">
+                <div style="font-size:14px; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">
+                    Patient's 4-Digit PIN
+                </div>
+                <div id="patient-pin-display" style="font-size:52px; font-weight:900; letter-spacing:16px; color:var(--primary); font-family:monospace; cursor:pointer;" onclick="togglePIN()" title="Click to reveal/hide">
+                    ●●●●
+                </div>
+                <button onclick="togglePIN()" class="btn-secondary" style="font-size:14px; padding:8px 20px; min-height:auto; margin-top:10px;">
+                    👁️ Reveal / Hide PIN
+                </button>
+                <div style="font-size:13px; color:var(--text-muted); margin-top:8px;">
+                    Write this PIN and give it to {{ patient_name }}. They use it to log in via the invite link.
+                </div>
+            </div>
+
+            <!-- Generate New Invite Link -->
+            <div style="padding:16px; background:var(--bg-card); border:2px solid var(--border); border-radius:var(--radius-md);">
+                <div style="font-weight:800; color:var(--text-primary); font-size:16px; margin-bottom:8px;">📩 Send a New Invite Link</div>
+                <p style="font-size:14px; color:var(--text-secondary); margin-bottom:12px;">
+                    Need to set up the app on a new device for {{ patient_name }}? Generate a fresh invite link.
+                </p>
+                <button class="btn-primary" style="padding:12px 24px; font-size:16px;" onclick="generateInvite()" id="invite-btn">
+                    🔗 Generate New Invite Link
+                </button>
+                <div id="invite-result" style="display:none; margin-top:12px;">
+                    <div style="display:flex; gap:8px;">
+                        <input type="text" id="invite-link-input" readonly style="flex:1; padding:10px; border:2px solid var(--border); border-radius:8px; font-size:13px; font-family:monospace; background:var(--bg-warm);">
+                        <button class="btn-primary" style="width:auto; padding:10px 20px; min-height:auto;" onclick="copyInvite()">📋 Copy</button>
+                    </div>
+                    <p style="font-size:13px; color:var(--text-muted); margin-top:8px;">
+                        Patient opens this link and enters their PIN to log in.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ASSIGN DOCTOR CARD -->
+    <div class="card" style="margin-bottom:20px; border-color:var(--secondary); border-width:2px;">
+        <div class="card-header">
+            <div class="card-icon" style="background:#EFF6FF;">🩺</div>
+            <div>
+                <div class="card-title">Assign a Doctor</div>
+                <div class="card-subtitle">Connect {{ patient_name }} to a registered doctor so they can view reports &amp; clinical data</div>
+            </div>
+        </div>
+
+        <div id="doctor-assign-section" style="margin-top:12px;">
+            <!-- Current doctor info -->
+            <div id="current-doctor-info" style="display:{% if assigned_doctor_name %}block{% else %}none{% endif %}; padding:14px; background:var(--primary-light); border:2px solid var(--primary); border-radius:var(--radius-md); margin-bottom:12px;">
+                <div style="font-weight:800; color:var(--primary-dark);">✅ Currently Assigned Doctor</div>
+                <div id="assigned-doc-name" style="font-size:18px; font-weight:700; margin-top:4px;">🩺 {{ assigned_doctor_name }}</div>
+                <div id="assigned-doc-email" style="font-size:14px; color:var(--text-muted);">{{ assigned_doctor_email }}</div>
+            </div>
+
+            <button class="btn-primary" style="padding:12px 24px; font-size:16px;" onclick="loadDoctors()" id="load-doctors-btn">
+                🩺 {% if assigned_doctor_name %}Change / Reassign Doctor{% else %}Browse &amp; Assign Doctor{% endif %}
+            </button>
+
+            <!-- Doctor List (shown after clicking) -->
+            <div id="doctor-list-container" style="display:none; margin-top:16px;">
+                <p style="font-size:15px; color:var(--text-secondary); margin-bottom:12px;">
+                    Select a doctor below to share <strong>{{ patient_name }}'s</strong> data with them:
+                </p>
+                <div id="doctor-list" style="display:flex; flex-direction:column; gap:10px;">
+                    <!-- Populated by JS -->
+                </div>
+                <p id="no-doctors-msg" style="display:none; font-size:14px; color:var(--text-muted); text-align:center; padding:20px;">
+                    No doctors registered yet. Ask your doctor to <a href="/signup?role=doctor">sign up here</a>.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Clinical Actions -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <a href="/report" class="btn-primary" style="text-align:center;">📊 View Full Clinical Report</a>
+        <button class="btn-secondary" onclick="emailReport()">📧 Email Report to Doctor</button>
+    </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// --- Patient PIN Reveal ---
+let pinRevealed = false;
+let patientPIN = '';
+
+async function loadPatientPIN() {
+    try {
+        const r = await fetch('/api/patient-pin');
+        const data = await r.json();
+        if (data.success && data.pin) {
+            patientPIN = data.pin;
+        }
+    } catch(e) {}
+}
+
+function togglePIN() {
+    const el = document.getElementById('patient-pin-display');
+    if (!el) return;
+    if (!pinRevealed) {
+        if (patientPIN) {
+            el.textContent = patientPIN;
+            pinRevealed = true;
+        } else {
+            loadPatientPIN().then(() => {
+                if (patientPIN) { el.textContent = patientPIN; pinRevealed = true; }
+                else el.textContent = 'N/A';
+            });
+        }
+    } else {
+        el.textContent = '●●●●';
+        pinRevealed = false;
+    }
+}
+
+// Load PIN in background when settings tab is active
+function switchCgTabHook(tabId) {
+    if (tabId === 'settings' && !patientPIN) {
+        loadPatientPIN();
+    }
+}
+
+// --- Doctor Assignment ---
+async function loadDoctors() {
+    const btn = document.getElementById('load-doctors-btn');
+    const container = document.getElementById('doctor-list-container');
+    const listEl = document.getElementById('doctor-list');
+    const noMsg = document.getElementById('no-doctors-msg');
+
+    btn.disabled = true;
+    btn.textContent = '⏳ Loading doctors...';
+
+    try {
+        const r = await fetch('/api/doctors');
+        const data = await r.json();
+
+        if (data.success && data.doctors && data.doctors.length > 0) {
+            listEl.innerHTML = '';
+            data.doctors.forEach(doc => {
+                const card = document.createElement('div');
+                card.style.cssText = `
+                    display:flex; align-items:center; gap:16px; padding:14px 16px;
+                    border:2px solid var(--border); border-radius:12px;
+                    background:var(--bg-card); cursor:pointer; transition:all 0.2s;
+                `;
+                card.innerHTML = `
+                    <div style="font-size:36px;">👨‍⚕️</div>
+                    <div style="flex:1;">
+                        <div style="font-size:17px; font-weight:800; color:var(--text-primary);">${doc.name}</div>
+                        <div style="font-size:14px; color:var(--text-muted);">${doc.email}</div>
+                        ${doc.specialization ? `<div style="font-size:13px; color:var(--primary); font-weight:700;">${doc.specialization}</div>` : ''}
+                        ${doc.hospital ? `<div style="font-size:13px; color:var(--text-muted);">🏥 ${doc.hospital}</div>` : ''}
+                    </div>
+                    <button class="btn-primary" style="width:auto; padding:10px 18px; font-size:14px; min-height:auto;" 
+                        onclick="assignDoctor('${doc.id}', '${doc.name.replace(/'/g, "\\'")}', '${doc.email}')">
+                        Assign →
+                    </button>
+                `;
+                card.addEventListener('mouseenter', () => card.style.borderColor = 'var(--primary)');
+                card.addEventListener('mouseleave', () => card.style.borderColor = 'var(--border)');
+                listEl.appendChild(card);
+            });
+            noMsg.style.display = 'none';
+        } else {
+            listEl.innerHTML = '';
+            noMsg.style.display = 'block';
+        }
+
+        container.style.display = 'block';
+        btn.textContent = '🔄 Refresh Doctor List';
+        btn.disabled = false;
+
+    } catch(e) {
+        btn.textContent = '🩺 Browse & Assign Doctor';
+        btn.disabled = false;
+        alert('Could not load doctors. Please try again.');
+    }
+}
+
+async function assignDoctor(doctorId, doctorName, doctorEmail) {
+    if (!confirm(`Assign Dr. ${doctorName} to this patient?\n\nThey will be able to view all patient data, game results, and cognitive reports.`)) return;
+
+    try {
+        const r = await fetch('/api/assign-doctor', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({doctor_id: doctorId})
+        });
+        const data = await r.json();
+        if (data.success) {
+            const infoEl = document.getElementById('current-doctor-info');
+            document.getElementById('assigned-doc-name').textContent = `🩺 ${data.doctor_name}`;
+            document.getElementById('assigned-doc-email').textContent = data.doctor_email;
+            infoEl.style.display = 'block';
+            document.getElementById('doctor-list-container').style.display = 'none';
+            showToast(`✅ Dr. ${data.doctor_name} has been assigned!`, 'success');
+        } else {
+            alert('❌ ' + (data.error || 'Failed to assign doctor'));
+        }
+    } catch(e) {
+        alert('Network error. Please try again.');
+    }
+}
+
+// --- Photo Upload ---
+async function uploadPhoto() {
+    const name = document.getElementById('photo-person-name').value.trim();
+    const relationship = document.getElementById('photo-relationship').value;
+    const fileInput = document.getElementById('photo-file');
+    
+    if (!name) { alert('Please enter the person\'s name.'); return; }
+    if (!fileInput.files[0]) { alert('Please select a photo.'); return; }
+    
+    const formData = new FormData();
+    formData.append('person_name', name);
+    formData.append('relationship', relationship);
+    formData.append('photo', fileInput.files[0]);
+    
+    try {
+        const r = await fetch('/api/upload-family-photo', {method: 'POST', body: formData});
+        const data = await r.json();
+        
+        if (data.success) {
+            // Add to gallery
+            const gallery = document.getElementById('photo-gallery');
+            const noMsg = document.getElementById('no-photos-msg');
+            if (noMsg) noMsg.remove();
+            
+            const card = document.createElement('div');
+            card.className = 'photo-card';
+            card.style.cssText = 'text-align:center; background:var(--bg-card); border:2px solid var(--border); border-radius:var(--radius-md); padding:12px;';
+            card.innerHTML = `
+                <img src="${data.photo_url}" alt="${data.person_name}" style="width:120px; height:120px; object-fit:cover; border-radius:var(--radius-sm); margin-bottom:8px;">
+                <div style="font-size:16px; font-weight:800;">${data.person_name}</div>
+                <div style="font-size:12px; color:var(--text-muted);">${relationship}</div>
+            `;
+            gallery.appendChild(card);
+            
+            // Reset form
+            document.getElementById('photo-person-name').value = '';
+            fileInput.value = '';
+            
+            alert('✅ Photo uploaded successfully!');
+        } else {
+            alert(data.error || 'Upload failed');
+        }
+    } catch(e) {
+        alert('Error uploading photo');
+    }
+}
+
+async function deletePhoto(docId) {
+    if (!confirm('Delete this photo?')) return;
+    try {
+        const r = await fetch('/api/delete-family-photo', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({doc_id: docId})
+        });
+        const data = await r.json();
+        if (data.success) {
+            const el = document.getElementById('photo-' + docId);
+            if (el) el.remove();
+        }
+    } catch(e) {
+        alert('Error deleting photo');
+    }
+}
+
+// --- Link Patient ---
+async function linkPatient() {
+    const code = document.getElementById('link-code').value.trim().toUpperCase();
+    if (!code) { alert('Please enter a patient code.'); return; }
+    
+    try {
+        const r = await fetch('/api/link-patient', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({patient_code: code})
+        });
+        const data = await r.json();
+        
+        if (data.success) {
+            alert(`✅ Linked to patient: ${data.patient_name}`);
+            window.location.reload();
+        } else {
+            alert(data.error || 'Failed to link');
+        }
+    } catch(e) {
+        alert('Error linking patient');
+    }
+}
+
+// --- Chart ---
+async function drawTrendChart() {
+    try {
+        const r = await fetch('/api/cognitive-trends');
+        const data = await r.json();
+        
+        const canvas = document.getElementById('trend-chart');
+        if (!canvas) return;
+        
+        const ctx = canvas.getContext('2d');
+        const scores = (data && data.daily_scores) ? data.daily_scores : [];
+        const w = canvas.width;
+        const h = canvas.height;
+        const padding = 45;
+        
+        ctx.clearRect(0, 0, w, h);
+        
+        // Draw grid lines
+        ctx.strokeStyle = '#F1F5F9';
+        ctx.lineWidth = 1;
+        [0.2, 0.5, 0.8].forEach(pct => {
+            const y = padding + (h - 2 * padding) * pct;
+            ctx.beginPath();
+            ctx.moveTo(padding, y);
+            ctx.lineTo(w - padding, y);
+            ctx.stroke();
+        });
+
+        // Axes
+        ctx.strokeStyle = '#CBD5E1';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(padding, padding);
+        ctx.lineTo(padding, h - padding);
+        ctx.lineTo(w - padding, h - padding);
+        ctx.stroke();
+        
+        // Labels
+        ctx.fillStyle = '#64748B';
+        ctx.font = 'bold 11px Inter, sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText('100%', padding - 8, padding + 5);
+        ctx.fillText('50%', padding - 8, padding + (h - 2 * padding) * 0.5 + 4);
+        ctx.fillText('0%', padding - 8, h - padding + 2);
+        
+        // When 0 sessions recorded
+        if (scores.length === 0) {
+            ctx.fillStyle = '#64748B';
+            ctx.font = 'bold 15px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('🎮 No game history yet', w / 2, h / 2 - 10);
+            ctx.font = '13px Inter, sans-serif';
+            ctx.fillStyle = '#94A3B8';
+            ctx.fillText('Complete daily cognitive exercises to track memory progress here!', w / 2, h / 2 + 16);
+            return;
+        }
+        
+        // When 1 session recorded
+        if (scores.length === 1) {
+            const s = scores[0];
+            const yScale = (h - 2 * padding) / 100;
+            const x = w / 2;
+            const y = h - padding - (s.score * yScale);
+
+            ctx.fillStyle = '#10B981';
+            ctx.beginPath();
+            ctx.arc(x, y, 7, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            ctx.fillStyle = '#0F172A';
+            ctx.font = 'bold 14px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(`${s.score}% (${s.date || 'Today'})`, x, y - 14);
+
+            ctx.fillStyle = '#64748B';
+            ctx.font = '13px Inter, sans-serif';
+            ctx.fillText('1 session recorded. Complete another game session to see curve progression!', w / 2, h - 14);
+            return;
+        }
+        
+        // 2 or more sessions: full curve
+        const xStep = (w - 2 * padding) / (scores.length - 1);
+        const yScale = (h - 2 * padding) / 100;
+        
+        // Fill gradient
+        const grad = ctx.createLinearGradient(0, padding, 0, h - padding);
+        grad.addColorStop(0, 'rgba(16, 185, 129, 0.25)');
+        grad.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
+        
+        ctx.beginPath();
+        scores.forEach((s, i) => {
+            const x = padding + i * xStep;
+            const y = h - padding - (s.score * yScale);
+            if (i === 0) {
+                ctx.moveTo(x, h - padding);
+                ctx.lineTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+        });
+        ctx.lineTo(padding + (scores.length - 1) * xStep, h - padding);
+        ctx.closePath();
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        // Stroke line
+        ctx.strokeStyle = '#10B981';
+        ctx.lineWidth = 3;
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        scores.forEach((s, i) => {
+            const x = padding + i * xStep;
+            const y = h - padding - (s.score * yScale);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+        
+        // Dots and text
+        scores.forEach((s, i) => {
+            const x = padding + i * xStep;
+            const y = h - padding - (s.score * yScale);
+            ctx.beginPath();
+            ctx.arc(x, y, 5, 0, Math.PI * 2);
+            ctx.fillStyle = '#10B981';
+            ctx.fill();
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Score label
+            ctx.fillStyle = '#0F172A';
+            ctx.font = 'bold 11px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(`${s.score}%`, x, y - 10);
+        });
+    } catch(e) {
+        console.error('Chart error:', e);
+    }
+}
+
+async function emailReport() {
+    try {
+        const r = await fetch('/api/email-report', {method:'POST', headers:{'Content-Type':'application/json'}});
+        const data = await r.json();
+        alert(data.success ? '📧 Report sent to doctor!' : (data.error || 'Failed'));
+    } catch(e) {
+        alert('Error sending report');
+    }
+}
+
+drawTrendChart();
+</script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// --- Real-time Leaflet Map Logic ---
+let patientMap = null;
+let patientMarker = null;
+
+const initialLat = {{ last_location.lat if last_location and last_location.get('lat') else 19.0304 }};
+const initialLng = {{ last_location.lng if last_location and last_location.get('lng') else 73.0166 }};
+const hasInitialLocation = {{ 'true' if last_location and last_location.get('lat') else 'false' }};
+
+function initPatientMap() {
+    const mapEl = document.getElementById('patient-map');
+    if (!mapEl || typeof L === 'undefined') return;
+
+    if (patientMap) {
+        patientMap.remove();
+    }
+
+    patientMap = L.map('patient-map', {
+        zoomControl: true,
+        attributionControl: false
+    }).setView([initialLat, initialLng], hasInitialLocation ? 15 : 12);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19
+    }).addTo(patientMap);
+
+    // Custom patient avatar marker icon
+    const patientIcon = L.divIcon({
+        className: 'custom-patient-marker',
+        html: `
+            <div style="position:relative; width:44px; height:44px; display:flex; align-items:center; justify-content:center;">
+                <span style="position:absolute; width:44px; height:44px; border-radius:50%; background:rgba(16,185,129,0.35); animation:pulse-loc 2s infinite ease-out;"></span>
+                <span style="position:relative; width:34px; height:34px; background:#10B981; border:3px solid white; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 10px rgba(0,0,0,0.3); font-size:18px;">
+                    👴
+                </span>
+            </div>
+        `,
+        iconSize: [44, 44],
+        iconAnchor: [22, 22]
+    });
+
+    if (hasInitialLocation) {
+        patientMarker = L.marker([initialLat, initialLng], {icon: patientIcon}).addTo(patientMap)
+            .bindPopup(`<strong>📍 {{ patient_name }}</strong><br><span style="font-size:12px; color:#64748B;">Live Location</span>`)
+            .openPopup();
+    }
+}
+
+async function fetchLiveLocation() {
+    try {
+        const r = await fetch('/api/patient-live-location');
+        if (!r.ok) return;
+        const data = await r.json();
+        
+        if (data.success && data.lat && data.lng) {
+            const lat = parseFloat(data.lat);
+            const lng = parseFloat(data.lng);
+            const latLng = [lat, lng];
+
+            const addrEl = document.getElementById('loc-address-text');
+            if (addrEl) addrEl.textContent = data.address || `Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`;
+
+            const gmapsLink = document.getElementById('loc-gmaps-link');
+            if (gmapsLink) {
+                gmapsLink.href = data.url || `https://www.google.com/maps?q=${lat},${lng}`;
+                gmapsLink.style.display = 'inline';
+            }
+
+            const subEl = document.getElementById('loc-status-subtitle');
+            if (subEl) subEl.textContent = `Live GPS ping updated (${new Date().toLocaleTimeString()})`;
+
+            if (!patientMap) {
+                initPatientMap();
+            }
+
+            if (patientMarker) {
+                patientMarker.setLatLng(latLng);
+            } else if (patientMap) {
+                const patientIcon = L.divIcon({
+                    className: 'custom-patient-marker',
+                    html: `
+                        <div style="position:relative; width:44px; height:44px; display:flex; align-items:center; justify-content:center;">
+                            <span style="position:absolute; width:44px; height:44px; border-radius:50%; background:rgba(16,185,129,0.35); animation:pulse-loc 2s infinite ease-out;"></span>
+                            <span style="position:relative; width:34px; height:34px; background:#10B981; border:3px solid white; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 10px rgba(0,0,0,0.3); font-size:18px;">
+                                👴
+                            </span>
+                        </div>
+                    `,
+                    iconSize: [44, 44],
+                    iconAnchor: [22, 22]
+                });
+                patientMarker = L.marker(latLng, {icon: patientIcon}).addTo(patientMap)
+                    .bindPopup(`<strong>📍 {{ patient_name }}</strong><br><span style="font-size:12px; color:#64748B;">Live Location</span>`)
+                    .openPopup();
+            }
+
+            if (patientMap) {
+                patientMap.setView(latLng, 15);
+            }
+        }
+    } catch (e) {
+        console.warn("Live GPS fetch error:", e);
+    }
+}
+
+// Initialize on DOM load
+window.addEventListener('DOMContentLoaded', () => {
+    drawTrendChart();
+    setTimeout(() => {
+        initPatientMap();
+        fetchLiveLocation();
+    }, 200);
+    setInterval(fetchLiveLocation, 4000);
+    loadCareNotes();
+});
+
+// --- Tab Switching ---
+function switchCgTab(tabId, btn) {
+    document.querySelectorAll('.cg-tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.cg-tab-panel').forEach(p => {
+        p.classList.remove('active');
+        p.style.display = 'none';
+    });
+    
+    if (btn) btn.classList.add('active');
+    const panel = document.getElementById('tab-' + tabId);
+    if (panel) {
+        panel.classList.add('active');
+        panel.style.display = 'block';
+    }
+    
+    if (tabId === 'map') {
+        setTimeout(() => {
+            if (patientMap) patientMap.invalidateSize();
+        }, 150);
+    }
+    if (tabId === 'notes') {
+        loadCareNotes();
+    }
+}
+
+// --- Caregiver Notes (RAG) ---
+async function loadCareNotes() {
+    try {
+        const r = await fetch('/api/caregiver-notes');
+        const data = await r.json();
+        if (data.success) {
+            const raw = data.raw_notes || {};
+            if (raw.medications) document.getElementById('notes-medication').value = raw.medications;
+            if (raw.item_locations) document.getElementById('notes-items').value = raw.item_locations;
+            if (raw.family_members) document.getElementById('notes-family').value = raw.family_members;
+            if (raw.daily_routine) document.getElementById('notes-routine').value = raw.daily_routine;
+            if (raw.frequent_confusion) document.getElementById('notes-confusion').value = raw.frequent_confusion;
+            if (raw.doctor_notes) document.getElementById('notes-doctor').value = raw.doctor_notes;
+            
+            renderRagChunks(data.chunks || []);
+        }
+    } catch (e) {
+        console.warn('Error loading care notes:', e);
+    }
+}
+
+function renderRagChunks(chunks) {
+    const listEl = document.getElementById('rag-chunks-list');
+    if (!listEl) return;
+    if (!chunks.length) {
+        listEl.innerHTML = '<p style="color:var(--text-muted); font-size:14px;">No memory chunks indexed yet. Enter details above and click Save!</p>';
+        return;
+    }
+    listEl.innerHTML = chunks.map(c => `
+        <div style="padding:10px 14px; background:var(--bg-card); border-left:4px solid var(--primary); border-radius:4px; font-size:14px; display:flex; justify-content:space-between; align-items:center;">
+            <span><strong style="color:var(--primary);">${c.category}:</strong> ${c.text}</span>
+            <span class="badge" style="background:var(--primary-light); color:var(--primary-dark); font-size:11px;">ACTIVE</span>
+        </div>
+    `).join('');
+}
+
+async function saveCareNotes() {
+    const btn = document.getElementById('save-notes-btn');
+    const statusEl = document.getElementById('notes-status');
+    btn.disabled = true;
+    btn.textContent = '⏳ Indexing Knowledge Base...';
+    statusEl.textContent = '';
+    
+    const payload = {
+        medications: document.getElementById('notes-medication').value.trim(),
+        item_locations: document.getElementById('notes-items').value.trim(),
+        family_members: document.getElementById('notes-family').value.trim(),
+        daily_routine: document.getElementById('notes-routine').value.trim(),
+        frequent_confusion: document.getElementById('notes-confusion').value.trim(),
+        doctor_notes: document.getElementById('notes-doctor').value.trim(),
+    };
+    
+    try {
+        const r = await fetch('/api/caregiver-notes', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const data = await r.json();
+        if (data.success) {
+            statusEl.textContent = '✅ Saved & Indexed in RAG Brain!';
+            loadCareNotes();
+        } else {
+            statusEl.textContent = '❌ ' + (data.error || 'Failed to save');
+        }
+    } catch (e) {
+        statusEl.textContent = '❌ Network error';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '💾 Save & Index Care Notes';
+        setTimeout(() => { statusEl.textContent = ''; }, 4000);
+    }
+}
+
+
+// --- Invite Link System ---
+async function generateInvite() {
+    const btn = document.getElementById('invite-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Generating...';
+    
+    try {
+        const r = await fetch('/api/generate-invite', { method: 'POST' });
+        const data = await r.json();
+        
+        if (data.success) {
+            document.getElementById('invite-result').style.display = 'block';
+            document.getElementById('invite-link-input').value = data.invite_link;
+            btn.textContent = '✅ Link Generated!';
+            btn.style.background = 'var(--primary-light)';
+            btn.style.color = 'var(--primary-dark)';
+        } else {
+            alert(data.error || 'Failed to generate invite link');
+            btn.textContent = '📩 Generate Invite Link for Patient';
+            btn.disabled = false;
+        }
+    } catch (e) {
+        alert('Network error. Please try again.');
+        btn.textContent = '📩 Generate Invite Link for Patient';
+        btn.disabled = false;
+    }
+}
+
+function copyInvite() {
+    const input = document.getElementById('invite-link-input');
+    input.select();
+    navigator.clipboard.writeText(input.value).then(() => {
+        const btn = event.target;
+        btn.textContent = '✅ Copied!';
+        setTimeout(() => { btn.textContent = '📋 Copy'; }, 2000);
+    });
+}
+
+// --- Add Patient (new flow) ---
+async function addPatient() {
+    const name = document.getElementById('ap-name').value.trim();
+    if (!name) { alert('Please enter the patient\'s name.'); document.getElementById('ap-name').focus(); return; }
+
+    const btn = document.getElementById('add-patient-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Creating patient account...';
+
+    const payload = {
+        patient_name: name,
+        age: parseInt(document.getElementById('ap-age').value) || 70,
+        gender: document.getElementById('ap-gender').value,
+        region: document.getElementById('ap-region').value,
+        language: document.getElementById('ap-language').value,
+        dementia_stage: document.getElementById('ap-stage').value,
+        caregiver_relationship: document.getElementById('ap-relationship').value,
+        doctor_email: (document.getElementById('ap-doctor-email').value || '').trim(),
+    };
+
+    try {
+        const r = await fetch('/api/add-patient', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const data = await r.json();
+        if (data.success) {
+            // Show result
+            document.getElementById('add-patient-form').style.display = 'none';
+            document.getElementById('result-pin').textContent = data.pin;
+            document.getElementById('result-invite-link').value = data.invite_link;
+            document.getElementById('patient-added-result').style.display = 'block';
+
+            // Speak PIN aloud for caregiver
+            if ('speechSynthesis' in window) {
+                const digits = data.pin.split('').join(', ');
+                const u = new SpeechSynthesisUtterance(`Patient ${data.patient_name} has been added. Their PIN is ${digits}. Please write it down.`);
+                u.rate = 0.85;
+                speechSynthesis.speak(u);
+            }
+        } else {
+            alert('❌ ' + (data.error || 'Failed to add patient'));
+            btn.disabled = false;
+            btn.textContent = '➕ ADD PATIENT & GET PIN';
+        }
+    } catch(e) {
+        alert('Network error. Please try again.');
+        btn.disabled = false;
+        btn.textContent = '➕ ADD PATIENT & GET PIN';
+    }
+}
+
+function copyInviteResult() {
+    const input = document.getElementById('result-invite-link');
+    input.select();
+    navigator.clipboard.writeText(input.value).then(() => {
+        const btn = event.target;
+        const orig = btn.textContent;
+        btn.textContent = '✅ Copied!';
+        setTimeout(() => { btn.textContent = orig; }, 2000);
+    });
+}
+</script>
+{% endblock %}

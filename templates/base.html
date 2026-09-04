@@ -1,182 +1,208 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NeuroLearn AI — Interactive Learning Platform</title>
-    <meta name="description" content="Personalized, neuro-informed learning platform with gamified paths, interactive exercises, and AI study synthesis.">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="description" content="NeuroLearn 2.0 — AI-Based Cognitive Gaming & Memory Assistance for Elderly Dementia Patients">
+    <meta name="theme-color" content="#10B981">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <title>{% block title %}NeuroLearn 2.0{% endblock %}</title>
     
-    <!-- Favicon -->
-    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
-    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="manifest" href="/manifest.json">
+    <!-- Phosphor Icons (SVG icon library) -->
+    <script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
     
-    <!-- Design System Styles -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
-    
-    <!-- Tailwind CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        emerald: '#10B981',
-                        sky: '#0EA5E9',
-                        violet: '#8B5CF6',
-                        amber: '#F59E0B',
-                        rose: '#EC4899',
-                        slate: '#1E293B'
-                    }
-                }
-            }
-        }
-    </script>
-
-    <!-- Core Libraries -->
-    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/tone@14.8.49/build/Tone.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/js/all.min.js"></script>
-    
-    <!-- Firebase Modular SDK -->
-    <script type="module">
-        import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js';
-        import { getAuth, onAuthStateChanged, signOut as fbSignOut } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
-        import { getFirestore } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
-        import { getAnalytics } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-analytics.js';
-
-        const firebaseConfig = {
-            apiKey: "AIzaSyA_82lrODFlAby8lfF2TXW45-9dGBt_ZUE",
-            authDomain: "neurolearn-d9491.firebaseapp.com",
-            projectId: "neurolearn-d9491",
-            storageBucket: "neurolearn-d9491.firebasestorage.app",
-            messagingSenderId: "188637252995",
-            appId: "1:188637252995:web:db3777a0322ed00fc13ab6",
-            measurementId: "G-2SWCNG7RWJ"
-        };
-
-        const app = initializeApp(firebaseConfig);
-        window.firebaseApp = app;
-        window.firebaseAuth = getAuth(app);
-        window.firebaseDB = getFirestore(app);
-        window.firebaseAnalytics = getAnalytics(app);
-        window.fbSignOut = fbSignOut;
-
-        onAuthStateChanged(window.firebaseAuth, (user) => {
-            window.firebaseUser = user || null;
-            document.dispatchEvent(new CustomEvent('firebase-auth-ready', { detail: user }));
-        });
-    </script>
-
-    <!-- Accessibility Engine Init -->
-    <script>
-        window.NEURO_PROFILE = {{ session.get('learning_profile', {}) | tojson | safe }};
-    </script>
-    <script src="{{ url_for('static', filename='js/accessibility_engine.js') }}"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            if (window.NEURO_PROFILE && Object.keys(window.NEURO_PROFILE).length > 0) {
-                const engine = new AccessibilityEngine(window.NEURO_PROFILE);
-                engine.init();
-            }
-        });
-    </script>
+    {% block head %}{% endblock %}
 </head>
-<body class="min-h-screen bg-slate-50 text-slate-800 font-sans">
-
-    <!-- Primary Navigation Header -->
-    <header class="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
-        <div class="max-w-6xl mx-auto px-2 sm:px-4 py-3 flex flex-wrap items-center justify-between gap-y-2">
-            
-            <!-- Logo -->
-            <a href="/" class="flex items-center gap-2 md:gap-3 no-underline group flex-shrink-0" id="nav-logo">
-                <img src="{{ url_for('static', filename='favicon.svg') }}" alt="NeuroLearn Logo" class="w-8 h-8 md:w-10 md:h-10 rounded-lg md:rounded-xl shadow-md group-hover:scale-105 transition-transform">
-                <div>
-                    <span class="font-extrabold text-base md:text-xl tracking-tight text-slate-900 block leading-none">NeuroLearn</span>
-                    <span class="hidden sm:block text-[7px] md:text-[10px] font-bold tracking-widest text-emerald-600 uppercase">Adaptive Platform</span>
-                </div>
+<body>
+    <!-- Top Navigation -->
+    <nav class="top-nav">
+        <div class="nav-inner">
+            <a href="/" class="nav-brand">
+                <span class="nav-logo">🧠</span>
+                <span class="nav-title">NeuroLearn</span>
             </a>
-
-            <!-- Action Controls & Profile -->
-            <div class="flex items-center gap-2 md:gap-4">
-                {% if session.get('user_id') or session.get('student_name') %}
-                    <!-- XP Badge -->
-                    <div class="flex items-center gap-2 px-4 py-2 rounded-full bg-amber-50 border border-amber-200 text-amber-700 font-extrabold text-sm" id="xp-display">
-                        <span>⚡</span>
-                        <span id="xp-value">{{ session.get('total_xp', 0) }} XP</span>
-                    </div>
-
-                    <!-- Dashboard Link -->
-                    <a href="/dashboard" class="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm transition-colors" id="nav-dashboard">
-                        <i class="fas fa-th-large text-slate-500"></i>
-                        <span class="hidden sm:inline">Dashboard</span>
-                    </a>
-
-                    {% if session.get('user_type') == 'parent' %}
-                        <a href="/parent-dashboard" class="px-3 py-2 text-sm font-bold text-slate-600 hover:text-slate-900" id="nav-parent-view">Parent View</a>
+            
+            <div class="nav-actions">
+                {% if session.get('user_id') %}
+                    <!-- Language Selector -->
+                    <select id="lang-select" class="lang-select" onchange="setLanguage(this.value)">
+                        <option value="en" {% if session.get('preferred_language','en')=='en' %}selected{% endif %}>EN — English</option>
+                        <option value="hi" {% if session.get('preferred_language')=='hi' %}selected{% endif %}>हिंदी</option>
+                        <option value="mr" {% if session.get('preferred_language')=='mr' %}selected{% endif %}>मराठी</option>
+                        <option value="as" {% if session.get('preferred_language')=='as' %}selected{% endif %}>অসমীয়া</option>
+                        <option value="bn" {% if session.get('preferred_language')=='bn' %}selected{% endif %}>বাংলা</option>
+                        <option value="mni" {% if session.get('preferred_language')=='mni' %}selected{% endif %}>মৈতৈ</option>
+                    </select>
+                    
+                    <!-- Read Aloud Button -->
+                    <button class="btn-icon" onclick="readPageAloud()" title="Read this page aloud" aria-label="Read page aloud">
+                        <i class="fas fa-volume-up"></i>
+                    </button>
+                    
+                    {% if session.get('role') in ('caregiver', 'doctor') %}
+                        <a href="/caregiver-dashboard" class="btn-icon" title="Dashboard"><i class="fas fa-chart-line"></i></a>
+                    {% else %}
+                        <a href="/dashboard" class="btn-icon" title="Home"><i class="fas fa-home"></i></a>
                     {% endif %}
-
-                    <!-- Logout -->
-                    <a href="/logout" class="w-10 h-10 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-500 flex items-center justify-center transition-colors" title="Sign Out" id="nav-logout">
-                        <i class="fas fa-sign-out-alt"></i>
-                    </a>
+                    
+                    <a href="/logout" class="btn-icon" title="{{ t['nav_logout'] }}"><i class="fas fa-sign-out-alt"></i></a>
                 {% else %}
-                    <a href="/login" class="btn-secondary text-[10px] md:text-xs !py-1.5 !px-3 md:!py-2 md:!px-4 !min-h-0 whitespace-nowrap" id="nav-signin" style="border-bottom-width: 4px;">Sign In</a>
-                    <a href="/signup" class="btn-primary text-[10px] md:text-xs !py-1.5 !px-3 md:!py-2 md:!px-4 !min-h-0 whitespace-nowrap" id="nav-signup" style="border-bottom-width: 4px;">Get Started</a>
+                    <a href="/login" class="btn-nav">{{ t['nav_login'] }}</a>
                 {% endif %}
             </div>
         </div>
-    </header>
+    </nav>
 
-    <!-- Main Content Container -->
-    <main class="container mx-auto px-4 py-6 max-w-6xl">
-        {% with messages = get_flashed_messages() %}
-          {% if messages %}
-            {% for message in messages %}
-              <div class="p-4 mb-6 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-center font-bold animate-slide-up">
-                {{ message }}
-              </div>
-            {% endfor %}
-          {% endif %}
-        {% endwith %}
-
+    <!-- Main Content -->
+    <main class="main-content">
         {% block content %}{% endblock %}
     </main>
 
-    <!-- Help Popup -->
-    <div id="help-popup" class="fixed inset-0 z-[1001] hidden flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-        <div class="bg-white p-8 max-w-md w-full text-center rounded-3xl shadow-2xl animate-pop border border-slate-200">
-            <div class="text-5xl mb-4">💡</div>
-            <h3 class="text-2xl font-black mb-3 text-slate-900">Need Guidance?</h3>
-            <p class="text-base text-slate-600 mb-6 font-semibold">Tap any level node or card to get started. Learning is self-paced and auto-saves your progress!</p>
-            <button onclick="document.getElementById('help-popup').classList.add('hidden')" class="btn-primary w-full py-4 text-base font-black">Got it!</button>
+    <!-- SOS Floating Button (visible for patients) -->
+    {% if session.get('user_id') and session.get('role', 'patient') == 'patient' %}
+    <button class="sos-float" id="sos-btn" onclick="triggerSOS()" aria-label="Emergency SOS">
+        <span class="sos-icon">🆘</span>
+        <span class="sos-text">{{ t['sos_button'] }}</span>
+    </button>
+    {% endif %}
+
+    <!-- SOS Modal -->
+    <div class="modal-overlay" id="sos-modal" style="display:none;">
+        <div class="modal-card sos-modal-card">
+            <div class="sos-modal-header">
+                <span style="font-size:48px;">🆘</span>
+                <h2>Emergency Alert Sent!</h2>
+            </div>
+            <div class="sos-modal-body">
+                <p id="sos-status-msg">Contacting your caregiver...</p>
+                <div class="sos-checklist" id="sos-checklist">
+                    <div class="sos-check-item" id="sos-email"><i class="fas fa-spinner fa-spin"></i> Sending email...</div>
+                    <div class="sos-check-item" id="sos-location"><i class="fas fa-spinner fa-spin"></i> Sharing location...</div>
+                </div>
+                <p class="sos-calm">Take a deep breath. Help is on the way. 💚</p>
+            </div>
+            <button class="btn-primary btn-big" onclick="closeSOS()">I'm OK Now</button>
         </div>
     </div>
 
-    <!-- Sound & Utility Helpers -->
+    <!-- Bottom Nav (for patients on mobile) -->
+    {% if session.get('user_id') and session.get('role', 'patient') == 'patient' %}
+    <nav class="bottom-nav">
+        <a href="/dashboard" class="bottom-nav-item {% if request.endpoint == 'dashboard' %}active{% endif %}">
+            <i class="fas fa-home"></i>
+            <span>{{ t['nav_home'] }}</span>
+        </a>
+        <a href="/companion" class="bottom-nav-item {% if request.endpoint == 'companion' %}active{% endif %}">
+            <i class="fas fa-comments"></i>
+            <span>{{ t['nav_companion'] }}</span>
+        </a>
+        <a href="/report" class="bottom-nav-item {% if request.endpoint == 'cognitive_report' %}active{% endif %}">
+            <i class="fas fa-chart-bar"></i>
+            <span>{{ t['nav_report'] }}</span>
+        </a>
+    </nav>
+    {% endif %}
+
+    <script src="/static/js/main.js"></script>
+    <!-- Inject patient language for TTS -- available to ALL scripts on page -->
     <script>
-        window.playSound = function(type) {
-            if (localStorage.getItem('neurolearn_sounds') === 'off') return;
-            try {
-                const synth = new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.01, decay: 0.2, sustain: 0, release: 0.3 } }).toDestination();
-                if (type === 'correct') {
-                    synth.triggerAttackRelease('C5', '0.1');
-                    setTimeout(() => synth.triggerAttackRelease('E5', '0.1'), 100);
-                    setTimeout(() => synth.triggerAttackRelease('G5', '0.15'), 200);
-                } else if (type === 'wrong') {
-                    synth.triggerAttackRelease('E3', '0.2');
-                } else if (type === 'click') {
-                    synth.triggerAttackRelease('A4', '0.05');
-                } else if (type === 'complete') {
-                    synth.triggerAttackRelease('C5', '0.1');
-                    setTimeout(() => synth.triggerAttackRelease('E5', '0.1'), 120);
-                    setTimeout(() => synth.triggerAttackRelease('G5', '0.1'), 240);
-                    setTimeout(() => synth.triggerAttackRelease('C6', '0.3'), 360);
-                }
-            } catch(e) { }
-        };
+    // Patient language from Flask session (set by caregiver during patient setup)
+    const PATIENT_LANG = "{{ session.get('preferred_language', session.get('patient_profile', {}).get('language', 'en')) }}";
+    const PATIENT_LANG_BCP47 = {
+        'hi': 'hi-IN', 'mr': 'mr-IN', 'as': 'as-IN',
+        'bn': 'bn-IN', 'mni': 'bn-IN', 'ta': 'ta-IN', 'en': 'en-IN'
+    }[PATIENT_LANG] || 'en-IN';
+
+    /**
+     * speakText — global TTS function used on ALL patient-side pages.
+     * Uses PATIENT_LANG so voice is always in the correct language.
+     * Falls back to browser speechSynthesis if backend TTS fails.
+     */
+    function speakText(text, lang) {
+        const useLang = lang || PATIENT_LANG || 'en';
+        // Try backend TTS first (Google Translate TTS / gTTS)
+        fetch('/api/tts/speak', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({text: text, lang: useLang})
+        }).then(r => {
+            if (!r.ok) throw new Error('TTS backend failed');
+            return r.blob();
+        }).then(blob => {
+            const url = URL.createObjectURL(blob);
+            const audio = new Audio(url);
+            audio.play();
+        }).catch(() => {
+            // Browser TTS fallback
+            if ('speechSynthesis' in window) {
+                speechSynthesis.cancel();
+                const u = new SpeechSynthesisUtterance(text);
+                u.lang = PATIENT_LANG_BCP47;
+                u.rate = 0.8;
+                // Pick best matching voice for language
+                const voices = speechSynthesis.getVoices();
+                const match = voices.find(v => v.lang.startsWith(PATIENT_LANG_BCP47.split('-')[0]));
+                if (match) u.voice = match;
+                speechSynthesis.speak(u);
+            }
+        });
+    }
     </script>
-    
+    {% if session.get('user_id') and session.get('role', 'patient') == 'patient' %}
+    <script>
+    // --- Continuous Real-Time Patient Location Tracking ---
+    (function() {
+        if (!('geolocation' in navigator)) return;
+
+        let lastLat = null;
+        let lastLng = null;
+
+        function streamLocation(pos) {
+            if (!pos || !pos.coords) return;
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+
+            // Avoid duplicate pings if identical and sent less than 5s ago
+            lastLat = lat;
+            lastLng = lng;
+
+            fetch('/api/share-location', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ latitude: lat, longitude: lng })
+            }).catch(e => console.debug('Location ping skipped:', e));
+        }
+
+        // 1. Immediate GPS sync
+        navigator.geolocation.getCurrentPosition(streamLocation, null, {
+            enableHighAccuracy: true,
+            maximumAge: 2000,
+            timeout: 8000
+        });
+
+        // 2. Continuous watchPosition (triggers instantaneously on movement)
+        navigator.geolocation.watchPosition(streamLocation, null, {
+            enableHighAccuracy: true,
+            maximumAge: 2000,
+            timeout: 12000
+        });
+
+        // 3. Heartbeat sync every 6 seconds to keep server & database timestamp fresh
+        setInterval(() => {
+            navigator.geolocation.getCurrentPosition(streamLocation, null, {
+                enableHighAccuracy: true,
+                maximumAge: 2000,
+                timeout: 5000
+            });
+        }, 6000);
+    })();
+    </script>
+    {% endif %}
     {% block scripts %}{% endblock %}
 </body>
 </html>

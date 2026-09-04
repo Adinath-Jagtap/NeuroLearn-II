@@ -1,0 +1,21 @@
+{
+    "name": "NeuroLearn 2.0",
+    "short_name": "NeuroLearn",
+    "description": "AI-Based Cognitive Gaming & Memory Assistance for Elderly Dementia Patients",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#FFF8F0",
+    "theme_color": "#10B981",
+    "orientation": "portrait-primary",
+    "icons": [
+        {
+            "src": "/static/favicon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any maskable"
+        }
+    ],
+    "categories": ["health", "medical", "games"],
+    "lang": "en",
+    "dir": "ltr"
+}

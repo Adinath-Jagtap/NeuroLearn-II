@@ -110,9 +110,13 @@ def call_llm(system_prompt, user_prompt, model=None, retries=5):
     openrouter_key, groq_key = get_ai_client()
     
     # 1. MODEL ROUTING LOGIC
-    # OpenRouter models usually contain a "/" 
-    # Groq models are bare
-    is_groq = model and ("/" not in model)
+    # Groq-hosted models: bare names OR prefixed with groq/, qwen/, allam-
+    # OpenRouter models: user/:model or org/model patterns from openrouter
+    GROQ_PREFIXES = ("groq/", "qwen/", "allam", "openai/gpt-oss", "canopylabs/", "meta-llama/llama-prompt")
+    is_groq = model and (
+        "/" not in model  # bare model name like "llama-3.3-70b-versatile"
+        or any(model.startswith(p) for p in GROQ_PREFIXES)
+    )
     
     if is_groq:
         url = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1").rstrip("/") + "/chat/completions"
@@ -129,7 +133,7 @@ def call_llm(system_prompt, user_prompt, model=None, retries=5):
         api_name = "OpenRouter"
         if not model:
             # DYNAMIC FREE ROUTER: Automatically picks the best current FREE model
-            model = os.getenv("PRIMARY_MODEL", "openrouter/free")
+            model = os.getenv("PRIMARY_MODEL", "openrouter/auto")
 
     payload = {
         "model": model,
@@ -172,21 +176,29 @@ def call_llm(system_prompt, user_prompt, model=None, retries=5):
             status_code = getattr(response, 'status_code', None) if 'response' in locals() else None
             print(f"⚠️ HTTP Error ({api_name} | {payload['model']}): {str(e)} | Status: {status_code}")
             
+            # On auth failure (401/403), immediately fallback to OpenRouter
+            if status_code in [401, 403, 404] and is_groq:
+                print(f"🔄 Groq error {status_code}. Trying fallback Groq model...")
+                try:
+                    return call_llm(system_prompt, user_prompt, model="groq/compound", retries=2)
+                except:
+                    pass
+            
             # Retry on 429, 500, 502, 503
             if status_code in [429, 500, 502, 503, 529]:
-                # Rotate among ACTIVE Groq models on Rate Limit (429) to avoid decommissioning 400s
+                # Rotate among ACTIVE Groq models on Rate Limit (429)
                 if is_groq and status_code == 429:
-                    if payload["model"] == "llama-3.3-70b-versatile":
-                        payload["model"] = "llama-3.1-8b-instant"
+                    if payload["model"] == "groq/compound-mini":
+                        payload["model"] = "groq/compound"
                     else:
-                        payload["model"] = "llama-3.3-70b-versatile"
+                        payload["model"] = "groq/compound-mini"
                     print(f"🔄 Rotating to Groq active backup model: {payload['model']}")
                     
                 delay = (2 ** attempt) + 1.5
                 print(f"🔄 Retrying {api_name} in {delay}s...")
                 time.sleep(delay)
                 continue
-            break # Break on 400 Bad Request
+            break # Break on other errors
             
         except Exception as e:
             last_error = e
@@ -196,9 +208,15 @@ def call_llm(system_prompt, user_prompt, model=None, retries=5):
             
     print(f"❌ LLM EXHAUSTED after {retries} retries ({api_name} | {model})")
     
-    # For Groq, we just fail gracefully now as user wants strict Groq usage
-    if not is_groq and "free" not in model:
-        fallback = os.getenv("FALLBACK_MODEL", "llama-3.1-8b-instant")
+    # Fallback: try alternate Groq model or OpenRouter
+    if is_groq and model != "groq/compound":
+        print(f"🔄 Final fallback to groq/compound...")
+        try:
+            return call_llm(system_prompt, user_prompt, model="groq/compound", retries=2)
+        except:
+            pass
+    elif not is_groq and "free" not in str(model):
+        fallback = os.getenv("FALLBACK_MODEL", "groq/compound-mini")
         print(f"FALLING BACK TO GROQ | Model: {fallback}")
         return call_llm(system_prompt, user_prompt, model=fallback, retries=2)
         
@@ -284,7 +302,7 @@ def generate_syllabus(raw_text, preferred_language="en"):
             }]
         }
 
-LANGUAGE_NAMES = {"hi": "Hindi", "mr": "Marathi", "ta": "Tamil", "te": "Telugu", "en": "English"}
+LANGUAGE_NAMES = {"hi": "Hindi", "mr": "Marathi", "as": "Assamese", "ta": "Tamil", "te": "Telugu", "en": "English"}
 
 def process_chapter(chapter, cognitive_style, gender, emotion, learning_profile, raw_text="", assigned_game="true_false_blitz", preferred_language="en"):
     """Generate a fully personalized chapter using ALL profile data."""

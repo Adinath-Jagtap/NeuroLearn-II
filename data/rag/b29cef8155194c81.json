@@ -1,0 +1,269 @@
+{
+  "patient_id": "b29cef8155194c81",
+  "raw_notes": {
+    "medications": "Donepezil 5 mg — after breakfast at 9:00 AM\nAmlodipine 5 mg — after breakfast at 9:00 AM\nVitamin D3 1000 IU — after dinner at 8:00 PM\nParacetamol 500 mg — only when instructed by the doctor for pain",
+    "item_locations": "👓 Glasses — on the bedside table\n🦯 Walking stick — beside the bedroom door\n🔑 House keys — in the small bowl near the main entrance\n👛 Wallet — inside the top drawer of the bedroom cupboard\n📱 Mobile phone — usually kept on the living-room charging table\n🧣 Handkerchief — inside the left pocket of her handbag",
+    "family_members": "👩 Aarti — Daughter\n- Relationship: Daughter\n- Nickname: Aaru\n- Usually visits every morning\n- Helps with meals and household tasks\n- Calls the patient every evening at 7:00 PM\n- Patient feels comfortable talking to Aarti\n👨 Ram — Son\n- Relationship: Son\n- Nickname: Ramu\n- Works during the daytime\n- Usually returns home around 7:00 PM\n- Helps the patient with medicines and doctor appointments\n- Keeps important documents in the study room\n👦 Ramu — Grandson\n- Relationship: Grandson\n- Nickname: Ramu\n- Goes to school in the morning\n- Likes spending time with the patient in the evening\n- Patient enjoys talking and playing simple memory games with him\n- Usually visits the patient after school\n👧 Radhe — Granddaughter\n- Relationship: Granddaughter\n- Nickname: Radhu\n- Visits on weekends\n- Likes watching TV and listening to stories with the patient\n- Patient often asks when Radhe is coming to visit\n- Keeps her favourite drawings in the patient's room",
+    "daily_routine": "🌅 7:00 AM — Wake up and freshen up\n☕ 7:30 AM — Morning tea\n🍳 8:30 AM — Breakfast\n💊 9:00 AM — Morning medicines\n🚶 10:00 AM — Short morning walk with walking stick\n🍚 1:00 PM — Lunch\n😴 2:00 PM — Afternoon rest\n☕ 4:30 PM — Evening tea\n📺 6:00 PM — Watches favourite TV serial\n🍽️ 7:30 PM — Dinner\n💊 8:00 PM — Evening medicine\n🌙 10:00 PM — Goes to bed",
+    "frequent_confusion": "Frequently forgets where her glasses are kept.\nSometimes asks whether she has already taken her morning medicine.\nOccasionally forgets what day of the week it is.\nSometimes worries that she needs to go home even though she is already at home.\nMay ask repeatedly when her son Rajesh is coming.\nSometimes forgets that she already had her afternoon tea.",
+    "doctor_notes": "Take medicines strictly according to the prescribed schedule.\nDrink water regularly throughout the day.\nTake a short supervised walk each morning.\nAvoid skipping breakfast before morning medicines.\nKeep the walking stick nearby while walking.\nFamily member should assist with medication confirmation.\nMaintain a calm environment and gently reassure the patient when confused.\nFollow the prescribed diet and attend scheduled medical appointments."
+  },
+  "chunks": [
+    {
+      "category": "Medication",
+      "text": "Medication reminder: Donepezil 5 mg — after breakfast at 9:00 AM"
+    },
+    {
+      "category": "Medication",
+      "text": "Medication reminder: Amlodipine 5 mg — after breakfast at 9:00 AM"
+    },
+    {
+      "category": "Medication",
+      "text": "Medication reminder: Vitamin D3 1000 IU — after dinner at 8:00 PM"
+    },
+    {
+      "category": "Medication",
+      "text": "Medication reminder: Paracetamol 500 mg — only when instructed by the doctor for pain"
+    },
+    {
+      "category": "Item Location",
+      "text": "Location of item: 👓 Glasses — on the bedside table"
+    },
+    {
+      "category": "Item Location",
+      "text": "Location of item: 🦯 Walking stick — beside the bedroom door"
+    },
+    {
+      "category": "Item Location",
+      "text": "Location of item: 🔑 House keys — in the small bowl near the main entrance"
+    },
+    {
+      "category": "Item Location",
+      "text": "Location of item: 👛 Wallet — inside the top drawer of the bedroom cupboard"
+    },
+    {
+      "category": "Item Location",
+      "text": "Location of item: 📱 Mobile phone — usually kept on the living-room charging table"
+    },
+    {
+      "category": "Item Location",
+      "text": "Location of item: 🧣 Handkerchief — inside the left pocket of her handbag"
+    },
+    {
+      "category": "Family",
+      "text": "Family detail: 👩 Aarti — Daughter"
+    },
+    {
+      "category": "Family",
+      "text": "Family detail: - Relationship: Daughter"
+    },
+    {
+      "category": "Family",
+      "text": "Family detail: - Nickname: Aaru"
+    },
+    {
+      "category": "Family",
+      "text": "Family detail: - Usually visits every morning"
+    },
+    {
+      "category": "Family",
+      "text": "Family detail: - Helps with meals and household tasks"
+    },
+    {
+      "category": "Family",
+      "text": "Family detail: - Calls the patient every evening at 7:00 PM"
+    },
+    {
+      "category": "Family",
+      "text": "Family detail: - Patient feels comfortable talking to Aarti"
+    },
+    {
+      "category": "Family",
+      "text": "Family detail: 👨 Ram — Son"
+    },
+    {
+      "category": "Family",
+      "text": "Family detail: - Relationship: Son"
+    },
+    {
+      "category": "Family",
+      "text": "Family detail: - Nickname: Ramu"
+    },
+    {
+      "category": "Family",
+      "text": "Family detail: - Works during the daytime"
+    },
+    {
+      "category": "Family",
+      "text": "Family detail: - Usually returns home around 7:00 PM"
+    },
+    {
+      "category": "Family",
+      "text": "Family detail: - Helps the patient with medicines and doctor appointments"
+    },
+    {
+      "category": "Family",
+      "text": "Family detail: - Keeps important documents in the study room"
+    },
+    {
+      "category": "Family",
+      "text": "Family detail: 👦 Ramu — Grandson"
+    },
+    {
+      "category": "Family",
+      "text": "Family detail: - Relationship: Grandson"
+    },
+    {
+      "category": "Family",
+      "text": "Family detail: - Nickname: Ramu"
+    },
+    {
+      "category": "Family",
+      "text": "Family detail: - Goes to school in the morning"
+    },
+    {
+      "category": "Family",
+      "text": "Family detail: - Likes spending time with the patient in the evening"
+    },
+    {
+      "category": "Family",
+      "text": "Family detail: - Patient enjoys talking and playing simple memory games with him"
+    },
+    {
+      "category": "Family",
+      "text": "Family detail: - Usually visits the patient after school"
+    },
+    {
+      "category": "Family",
+      "text": "Family detail: 👧 Radhe — Granddaughter"
+    },
+    {
+      "category": "Family",
+      "text": "Family detail: - Relationship: Granddaughter"
+    },
+    {
+      "category": "Family",
+      "text": "Family detail: - Nickname: Radhu"
+    },
+    {
+      "category": "Family",
+      "text": "Family detail: - Visits on weekends"
+    },
+    {
+      "category": "Family",
+      "text": "Family detail: - Likes watching TV and listening to stories with the patient"
+    },
+    {
+      "category": "Family",
+      "text": "Family detail: - Patient often asks when Radhe is coming to visit"
+    },
+    {
+      "category": "Family",
+      "text": "Family detail: - Keeps her favourite drawings in the patient's room"
+    },
+    {
+      "category": "Daily Routine",
+      "text": "Daily habit & routine: 🌅 7:00 AM — Wake up and freshen up"
+    },
+    {
+      "category": "Daily Routine",
+      "text": "Daily habit & routine: ☕ 7:30 AM — Morning tea"
+    },
+    {
+      "category": "Daily Routine",
+      "text": "Daily habit & routine: 🍳 8:30 AM — Breakfast"
+    },
+    {
+      "category": "Daily Routine",
+      "text": "Daily habit & routine: 💊 9:00 AM — Morning medicines"
+    },
+    {
+      "category": "Daily Routine",
+      "text": "Daily habit & routine: 🚶 10:00 AM — Short morning walk with walking stick"
+    },
+    {
+      "category": "Daily Routine",
+      "text": "Daily habit & routine: 🍚 1:00 PM — Lunch"
+    },
+    {
+      "category": "Daily Routine",
+      "text": "Daily habit & routine: 😴 2:00 PM — Afternoon rest"
+    },
+    {
+      "category": "Daily Routine",
+      "text": "Daily habit & routine: ☕ 4:30 PM — Evening tea"
+    },
+    {
+      "category": "Daily Routine",
+      "text": "Daily habit & routine: 📺 6:00 PM — Watches favourite TV serial"
+    },
+    {
+      "category": "Daily Routine",
+      "text": "Daily habit & routine: 🍽️ 7:30 PM — Dinner"
+    },
+    {
+      "category": "Daily Routine",
+      "text": "Daily habit & routine: 💊 8:00 PM — Evening medicine"
+    },
+    {
+      "category": "Daily Routine",
+      "text": "Daily habit & routine: 🌙 10:00 PM — Goes to bed"
+    },
+    {
+      "category": "Memory Anchor",
+      "text": "Important fact patient forgets: Frequently forgets where her glasses are kept."
+    },
+    {
+      "category": "Memory Anchor",
+      "text": "Important fact patient forgets: Sometimes asks whether she has already taken her morning medicine."
+    },
+    {
+      "category": "Memory Anchor",
+      "text": "Important fact patient forgets: Occasionally forgets what day of the week it is."
+    },
+    {
+      "category": "Memory Anchor",
+      "text": "Important fact patient forgets: Sometimes worries that she needs to go home even though she is already at home."
+    },
+    {
+      "category": "Memory Anchor",
+      "text": "Important fact patient forgets: May ask repeatedly when her son Rajesh is coming."
+    },
+    {
+      "category": "Memory Anchor",
+      "text": "Important fact patient forgets: Sometimes forgets that she already had her afternoon tea."
+    },
+    {
+      "category": "Doctor Prescription",
+      "text": "Doctor advice: Take medicines strictly according to the prescribed schedule."
+    },
+    {
+      "category": "Doctor Prescription",
+      "text": "Doctor advice: Drink water regularly throughout the day."
+    },
+    {
+      "category": "Doctor Prescription",
+      "text": "Doctor advice: Take a short supervised walk each morning."
+    },
+    {
+      "category": "Doctor Prescription",
+      "text": "Doctor advice: Avoid skipping breakfast before morning medicines."
+    },
+    {
+      "category": "Doctor Prescription",
+      "text": "Doctor advice: Keep the walking stick nearby while walking."
+    },
+    {
+      "category": "Doctor Prescription",
+      "text": "Doctor advice: Family member should assist with medication confirmation."
+    },
+    {
+      "category": "Doctor Prescription",
+      "text": "Doctor advice: Maintain a calm environment and gently reassure the patient when confused."
+    },
+    {
+      "category": "Doctor Prescription",
+      "text": "Doctor advice: Follow the prescribed diet and attend scheduled medical appointments."
+    }
+  ]
+}

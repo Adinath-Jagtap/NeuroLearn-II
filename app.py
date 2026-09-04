@@ -1,41 +1,104 @@
+"""
+NeuroLearn 2.0 — AI-Based Cognitive Gaming & Memory Assistance Platform
+For Elderly Dementia Patients | SIH26003 | MDoNER
+"""
+
 import os
 import sys
 import json
 import time
-import threading
-import requests
+import uuid
+import random
+import string
 
-# Fix Windows cp1252 encoding crashes when printing Unicode/emoji
+# Fix Windows encoding
 if sys.stdout.encoding != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 if sys.stderr.encoding != 'utf-8':
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 from functools import wraps
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify, Response, send_from_directory, stream_with_context, flash
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, Response, send_from_directory, stream_with_context
+from werkzeug.utils import secure_filename
 from flask_session import Session
 from dotenv import load_dotenv
 from werkzeug.security import generate_password_hash, check_password_hash
-import firebase_admin
-from firebase_admin import credentials, firestore, auth as fb_auth
+import requests
 
-from utils.ai_processor import extract_text_from_pdf, generate_syllabus, process_chapter, call_llm
+from utils.ai_processor import call_llm
 from utils.tts_engine import generate_chapter_audio_stream, get_voice_for_language
-from utils.story_generator import generate_manga_story, generate_manga_images_batch, generate_simplified_content
+from utils.cognitive_engine import (
+    generate_recognition_game, generate_pattern_game,
+    calculate_game_score, get_adaptive_difficulty,
+    get_daily_routine, calculate_domain_scores,
+    calculate_overall_score, check_for_alerts,
+    generate_minicog_words, score_minicog
+)
+from utils.email_service import send_sos_alert, send_daily_report, send_smart_alert, send_doctor_report
+from utils.rag_engine import save_caregiver_notes, query_care_context, format_context_for_prompt, load_patient_chunks
+from utils.storage import upload_image
 
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "neurolearn_super_secret_key_123")
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "neurolearn_v2_secret_key_2026")
 
 # Session Config
 app.config["SESSION_TYPE"] = "filesystem"
 app.config["SESSION_PERMANENT"] = False
 Session(app)
 
-# --- FIREBASE ADMIN SDK INITIALIZATION ---
-FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "neurolearn-d9491")
-FIREBASE_API_KEY = os.getenv("FIREBASE_API_KEY", "AIzaSyA_82lrODFlAby8lfF2TXW45-9dGBt_ZUE")
+# Upload Config
+UPLOAD_FOLDER = os.path.join(app.root_path, 'static', 'uploads')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB max
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+from utils.translations import get_translations
+
+def generate_patient_code():
+    """Generate a 6-char unique patient code for linking."""
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+
+@app.context_processor
+def inject_translations():
+    """Inject localized UI translation dictionary into all templates."""
+    lang = request.args.get("lang")
+    if lang:
+        session["preferred_language"] = lang
+    else:
+        profile = session.get("patient_profile", {})
+        # If logged in as patient, ensure language matches their profile unless manually chosen
+        if session.get("role") == "patient" and profile.get("language") and not session.get("lang_manually_set"):
+            session["preferred_language"] = profile["language"]
+        elif not session.get("preferred_language"):
+            session["preferred_language"] = profile.get("language") or request.cookies.get("preferred_language", "en")
+    
+    current_lang = session.get("preferred_language", "en")
+    return {
+        "t": get_translations(current_lang),
+        "current_language": current_lang,
+        "supported_languages": [
+            {"code": "en", "name": "English"},
+            {"code": "hi", "name": "Hindi (हिंदी)"},
+            {"code": "mr", "name": "Marathi (मराठी)"},
+            {"code": "as", "name": "Assamese (অসমীয়া)"},
+            {"code": "bn", "name": "Bengali (বাংলা)"},
+            {"code": "mni", "name": "Manipuri (মৈতৈলোন্)"},
+        ]
+    }
+
+# --- FIREBASE DATABASE (Realtime Database & Firestore Support) ---
+FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "neurolearn-2")
+FIREBASE_API_KEY = os.getenv("FIREBASE_API_KEY", "")
+FIREBASE_DATABASE_URL = os.getenv("FIREBASE_DATABASE_URL", "").rstrip("/")
 REST_BASE_URL = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents"
+USE_RTDB = bool(FIREBASE_DATABASE_URL)
+
 
 def py_to_firestore(val):
     if val is None: return {'nullValue': None}
@@ -46,6 +109,7 @@ def py_to_firestore(val):
     elif isinstance(val, list): return {'arrayValue': {'values': [py_to_firestore(x) for x in val]}}
     elif isinstance(val, dict): return {'mapValue': {'fields': {k: py_to_firestore(v) for k, v in val.items()}}}
     return {'stringValue': str(val)}
+
 
 def firestore_to_py(val):
     if not isinstance(val, dict): return None
@@ -58,6 +122,7 @@ def firestore_to_py(val):
     elif 'arrayValue' in val: return [firestore_to_py(x) for x in val.get('arrayValue', {}).get('values', [])]
     return None
 
+
 class MemoryDoc:
     def __init__(self, doc_id, data):
         self.id = str(doc_id)
@@ -67,6 +132,7 @@ class MemoryDoc:
         return dict(self._data)
     def get(self, key, default=None):
         return self._data.get(key, default)
+
 
 class MemoryQuery:
     def __init__(self, items):
@@ -83,12 +149,16 @@ class MemoryQuery:
     def __iter__(self):
         return iter(self._items)
 
+
 class RESTDocumentRef:
     def __init__(self, store, collection_name, doc_id):
         self._store = store
         self.collection_name = collection_name
         self.id = str(doc_id)
-        self.url = f"{REST_BASE_URL}/{self.collection_name}/{self.id}?key={FIREBASE_API_KEY}"
+        if USE_RTDB:
+            self.url = f"{FIREBASE_DATABASE_URL}/{self.collection_name}/{self.id}.json"
+        else:
+            self.url = f"{REST_BASE_URL}/{self.collection_name}/{self.id}?key={FIREBASE_API_KEY}"
 
     def get(self):
         cached = self._store.get_cached(self.collection_name, self.id)
@@ -96,24 +166,35 @@ class RESTDocumentRef:
             return MemoryDoc(self.id, cached)
         try:
             r = requests.get(self.url, timeout=5)
-            if r.status_code == 200:
-                fields = r.json().get('fields', {})
-                data = {k: firestore_to_py(v) for k, v in fields.items()}
+            if r.status_code == 200 and r.text != 'null':
+                if USE_RTDB:
+                    data = r.json() or {}
+                else:
+                    fields = r.json().get('fields', {})
+                    data = {k: firestore_to_py(v) for k, v in fields.items()}
                 self._store.set_cached(self.collection_name, self.id, data)
                 return MemoryDoc(self.id, data)
         except Exception as e:
-            print(f"⚠️ [FIRESTORE REST] Get error: {e}")
-        return MemoryDoc(self.id, None)
+            print(f"⚠️ [FIREBASE] Get error on {self.collection_name}/{self.id}: {e}")
+        return MemoryDoc(self.id, cached if cached is not None else None)
 
     def set(self, data, merge=False):
         existing = self._store.get_cached(self.collection_name, self.id) or {}
         new_data = {**existing, **data} if merge else dict(data)
         self._store.set_cached(self.collection_name, self.id, new_data)
         try:
-            fields = {k: py_to_firestore(v) for k, v in new_data.items()}
-            requests.patch(self.url, json={'fields': fields}, timeout=5)
+            if USE_RTDB:
+                if merge:
+                    r = requests.patch(self.url, json=new_data, timeout=5)
+                else:
+                    r = requests.put(self.url, json=new_data, timeout=5)
+                if r.status_code == 200:
+                    print(f"🔥 [FIREBASE RTDB] Saved to /{self.collection_name}/{self.id}")
+            else:
+                fields = {k: py_to_firestore(v) for k, v in new_data.items()}
+                requests.patch(self.url, json={'fields': fields}, timeout=5)
         except Exception as e:
-            print(f"⚠️ [FIRESTORE REST] Set error: {e}")
+            print(f"⚠️ [FIREBASE] Set error on {self.collection_name}/{self.id}: {e}")
 
     def update(self, data):
         self.set(data, merge=True)
@@ -122,8 +203,10 @@ class RESTDocumentRef:
         self._store.delete_cached(self.collection_name, self.id)
         try:
             requests.delete(self.url, timeout=5)
+            print(f"🔥 [FIREBASE RTDB] Deleted /{self.collection_name}/{self.id}")
         except Exception as e:
-            print(f"⚠️ [FIRESTORE REST] Delete error: {e}")
+            print(f"⚠️ [FIREBASE] Delete error on {self.collection_name}/{self.id}: {e}")
+
 
 class RESTCollection:
     def __init__(self, store, name):
@@ -132,12 +215,11 @@ class RESTCollection:
 
     def document(self, doc_id=None):
         if not doc_id:
-            import uuid
-            doc_id = str(uuid.uuid4())
+            doc_id = str(uuid.uuid4()).replace('-', '')[:16]
         return RESTDocumentRef(self._store, self.name, str(doc_id))
 
     def where(self, field, op, val):
-        docs = self.get()
+        docs = self._get_all()
         matches = []
         for d in docs:
             field_val = d.to_dict().get(field)
@@ -147,35 +229,50 @@ class RESTCollection:
         return MemoryQuery(matches)
 
     def add(self, data):
-        import uuid
-        doc_id = str(uuid.uuid4())
+        doc_id = str(uuid.uuid4()).replace('-', '')[:16]
         ref = self.document(doc_id)
         ref.set(data)
         return ref
 
-    def get(self):
+    def _get_all(self):
         docs = []
         try:
-            url = f"{REST_BASE_URL}/{self.name}?key={FIREBASE_API_KEY}"
-            r = requests.get(url, timeout=5)
-            if r.status_code == 200:
-                raw_docs = r.json().get('documents', [])
-                for rd in raw_docs:
-                    name_parts = rd.get('name', '').split('/')
-                    d_id = name_parts[-1] if name_parts else 'unknown'
-                    fields = rd.get('fields', {})
-                    data = {k: firestore_to_py(v) for k, v in fields.items()}
-                    self._store.set_cached(self.name, d_id, data)
-                    docs.append(MemoryDoc(d_id, data))
-                return docs
+            if USE_RTDB:
+                url = f"{FIREBASE_DATABASE_URL}/{self.name}.json"
+                r = requests.get(url, timeout=5)
+                if r.status_code == 200 and r.text != 'null':
+                    json_data = r.json()
+                    if isinstance(json_data, dict):
+                        for d_id, data in json_data.items():
+                            if isinstance(data, dict):
+                                self._store.set_cached(self.name, d_id, data)
+                                docs.append(MemoryDoc(d_id, data))
+                        return docs
+            else:
+                url = f"{REST_BASE_URL}/{self.name}?key={FIREBASE_API_KEY}"
+                r = requests.get(url, timeout=5)
+                if r.status_code == 200:
+                    raw_docs = r.json().get('documents', [])
+                    for rd in raw_docs:
+                        name_parts = rd.get('name', '').split('/')
+                        d_id = name_parts[-1] if name_parts else 'unknown'
+                        fields = rd.get('fields', {})
+                        data = {k: firestore_to_py(v) for k, v in fields.items()}
+                        self._store.set_cached(self.name, d_id, data)
+                        docs.append(MemoryDoc(d_id, data))
+                    return docs
         except Exception as e:
-            print(f"⚠️ [FIRESTORE REST] List error: {e}")
+            print(f"⚠️ [FIREBASE] List error on {self.name}: {e}")
         cached_coll = self._store._cache.get(self.name, {})
         return [MemoryDoc(k, v) for k, v in cached_coll.items()]
 
+    def get(self):
+        return self._get_all()
+
     def list_documents(self):
-        docs = self.get()
+        docs = self._get_all()
         return [RESTDocumentRef(self._store, self.name, d.id) for d in docs]
+
 
 class ResilientRESTFirestore:
     def __init__(self):
@@ -196,26 +293,13 @@ class ResilientRESTFirestore:
     def collection(self, name):
         return RESTCollection(self, name)
 
-try:
-    firebase_admin.get_app()
-except ValueError:
-    sa_path = os.getenv("FIREBASE_SERVICE_ACCOUNT_PATH")
-    if sa_path and os.path.exists(sa_path):
-        cred = credentials.Certificate(sa_path)
-        firebase_admin.initialize_app(cred, {'projectId': FIREBASE_PROJECT_ID})
-    else:
-        try:
-            cred = credentials.ApplicationDefault()
-            firebase_admin.initialize_app(cred, {'projectId': FIREBASE_PROJECT_ID})
-        except Exception:
-            firebase_admin.initialize_app(options={'projectId': FIREBASE_PROJECT_ID})
 
-try:
-    db = firestore.client()
-    print("[FIREBASE] Live Firestore Client connected!")
-except Exception as e:
-    print(f"[FIREBASE] Connecting to live Firestore REST API for project '{FIREBASE_PROJECT_ID}'...")
-    db = ResilientRESTFirestore()
+db = ResilientRESTFirestore()
+if USE_RTDB:
+    print(f"🔥 [FIREBASE] Realtime Database ready at '{FIREBASE_DATABASE_URL}'")
+else:
+    print(f"🔥 [FIREBASE] REST Firestore client ready for project '{FIREBASE_PROJECT_ID}'")
+
 
 # --- AUTH HELPERS ---
 
@@ -227,8 +311,8 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+
 def get_current_user():
-    """Get current logged-in user dict or None from Firestore."""
     user_id = session.get("user_id")
     if not user_id:
         return None
@@ -239,118 +323,55 @@ def get_current_user():
             user_data['id'] = doc.id
             return user_data
     except Exception as e:
-        print(f"⚠️ [FIRESTORE] Error getting user: {e}")
+        print(f"⚠️ [AUTH] Error: {e}")
     return None
 
-def _save_topic_progress():
-    """Persist current session topic progress to Firestore user_topics collection."""
-    topic_id = session.get("active_topic_id")
-    if not topic_id:
-        return
-    user_id = session.get("user_id") or session.get("guest_id") or f"guest_{topic_id}"
-    try:
-        topic_ref = db.collection('user_topics').document(str(topic_id))
-        topic_ref.set({
-            'user_id': user_id,
-            'topic_title': session.get("ai_data", {}).get("syllabus", {}).get("topic_title", "Learning Module"),
-            'subject_domain': session.get("ai_data", {}).get("syllabus", {}).get("subject_domain", "General"),
-            'syllabus_json': json.dumps(session.get("ai_data", {}).get("syllabus", {})),
-            'chapter_progress_json': json.dumps(session.get("chapter_progress", {})),
-            'total_xp': session.get("total_xp", 0),
-            'chapters_generated_json': json.dumps(session.get("ai_data", {}).get("chapters_generated", {})),
-            'last_accessed': time.time()
-        }, merge=True)
-        print(f"🔥 [FIRESTORE] Saved topic progress for topic {topic_id}")
-    except Exception as e:
-        print(f"⚠️ [SAVE-PROGRESS] Error saving topic progress to Firestore: {e}")
 
-
-processing_status = {"message": "Idle", "progress": 0, "complete": False}
-
-def _clear_old_chapters():
-    """Purge all old chapter data from Firestore chapters collection."""
-    try:
-        docs = db.collection('chapters').list_documents()
-        cnt = 0
-        for doc in docs:
-            doc.delete()
-            cnt += 1
-        print(f"🗑️ [CLEANUP] Cleared {cnt} old chapters from Firestore")
-    except Exception as e:
-        print(f"⚠️ [CLEANUP] Error clearing Firestore chapters: {str(e)}")
-
-# --- FAVICON ROUTE ---
+# --- FAVICON ---
 @app.route('/favicon.ico')
 def favicon():
     return send_from_directory(os.path.join(app.root_path, 'static'), 'favicon.svg', mimetype='image/svg+xml')
 
-# --- FIREBASE AUTH API HELPERS ---
 
-def create_firebase_auth_user(email, password, display_name=None):
-    """Registers user in Firebase Authentication panel so they appear in Firebase Console."""
-    try:
-        url = f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={FIREBASE_API_KEY}"
-        payload = {
-            "email": email,
-            "password": password,
-            "returnSecureToken": True
-        }
-        if display_name:
-            payload["displayName"] = display_name
-        r = requests.post(url, json=payload, timeout=5)
-        if r.status_code == 200:
-            res_data = r.json()
-            local_id = res_data.get("localId")
-            print(f"🔥 [FIREBASE AUTH] Registered user in Firebase Auth Panel: email={email}, localId={local_id}")
-            return local_id
-        else:
-            print(f"⚠️ [FIREBASE AUTH] SignUp response ({r.status_code}): {r.text}")
-    except Exception as e:
-        print(f"⚠️ [FIREBASE AUTH] Error creating user: {e}")
-    return None
+# --- PWA ROUTES ---
+@app.route('/manifest.json')
+def manifest():
+    return send_from_directory(app.root_path, 'manifest.json', mimetype='application/manifest+json')
 
-def verify_firebase_auth_user(email, password):
-    """Authenticates user with Firebase Auth REST API."""
-    try:
-        url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FIREBASE_API_KEY}"
-        payload = {
-            "email": email,
-            "password": password,
-            "returnSecureToken": True
-        }
-        r = requests.post(url, json=payload, timeout=5)
-        if r.status_code == 200:
-            res_data = r.json()
-            local_id = res_data.get("localId")
-            print(f"🔥 [FIREBASE AUTH] Verified login in Firebase Auth Panel: email={email}, localId={local_id}")
-            return local_id
-    except Exception as e:
-        print(f"⚠️ [FIREBASE AUTH] Error verifying login: {e}")
-    return None
+@app.route('/sw.js')
+def service_worker():
+    return send_from_directory(app.root_path, 'sw.js', mimetype='application/javascript')
+
 
 # --- AUTH ROUTES ---
 
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
     if session.get("user_id"):
+        role = session.get("role", "patient")
+        if role in ("caregiver", "doctor"):
+            return redirect(url_for("caregiver_dashboard"))
         return redirect(url_for("dashboard"))
     
-    role = request.args.get("role", "child")
-    if role not in ("child", "parent"):
-        role = "child"
+    # Patients CANNOT self-register — they must be added by a caregiver
+    role = request.args.get("role", "caregiver")
+    if role == "patient":
+        return redirect(url_for("login_pin"))
+    if role not in ("caregiver", "doctor"):
+        role = "caregiver"
     
     if request.method == "POST":
-        username = request.form.get("username", "").strip()
+        name = request.form.get("name", "").strip()
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
         confirm = request.form.get("confirm_password", "")
-        display_name = request.form.get("display_name", "").strip() or username
-        role = request.form.get("user_type", role)
-        age_range = request.form.get("age_range", "11-13")
+        role = request.form.get("role", role)
+        if role not in ("caregiver", "doctor"):
+            role = "caregiver"
 
         errors = []
-        if not username or len(username) < 3:
-            errors.append("Username must be at least 3 characters.")
+        if not name or len(name) < 2:
+            errors.append("Name must be at least 2 characters.")
         if not email or "@" not in email:
             errors.append("Please enter a valid email address.")
         if not password or len(password) < 6:
@@ -359,265 +380,381 @@ def signup():
             errors.append("Passwords do not match.")
 
         if errors:
-            return render_template("signup.html", errors=errors, username=username, email=email, display_name=display_name, role=role)
+            return render_template("signup.html", errors=errors, name=name, email=email, role=role)
 
-        # Check existing users in Firestore
-        username_query = db.collection('users').where('username', '==', username).limit(1).get()
-        if len(username_query) > 0:
-            errors.append("Username already taken.")
+        # Check if email already registered
         email_query = db.collection('users').where('email', '==', email).limit(1).get()
         if len(email_query) > 0:
-            errors.append("Email already registered.")
-            
-        if errors:
-            return render_template("signup.html", errors=errors, username=username, email=email, display_name=display_name, role=role)
+            return render_template("signup.html", errors=["Email already registered."], name=name, email=email, role=role)
 
-        # 1. Create in Firebase Authentication Panel
-        fb_local_id = create_firebase_auth_user(email, password, display_name=display_name)
-
-        # 2. Store in Firestore Database
+        # Create caregiver/doctor account
         pw_hash = generate_password_hash(password)
-        user_ref = db.collection('users').document(fb_local_id) if fb_local_id else db.collection('users').document()
+        user_ref = db.collection('users').document()
         user_data = {
-            'username': username,
+            'name': name,
             'email': email,
             'password_hash': pw_hash,
-            'display_name': display_name,
-            'user_type': role,
-            'age_range': age_range,
-            'firebase_uid': fb_local_id or user_ref.id,
+            'role': role,
             'created_at': time.time()
         }
         user_ref.set(user_data)
         user_id = user_ref.id
 
         session["user_id"] = user_id
-        session["username"] = username
-        session["display_name"] = display_name
-        session["user_type"] = role
-        session["age_range"] = age_range
-        session["student_name"] = display_name
-        
-        # Transfer active topic to new user
-        if session.get("active_topic_id"):
-            try:
-                db.collection('user_topics').document(str(session["active_topic_id"])).update({'user_id': user_id})
-                print(f"🔥 [FIRESTORE AUTH] Transferred topic {session['active_topic_id']} to new user {user_id}")
-            except Exception as e:
-                print(f"⚠️ [AUTH] Topic transfer error: {e}")
+        session["name"] = name
+        session["email"] = email
+        session["role"] = role
+        session.modified = True
 
-        print(f"🔥 [FIRESTORE AUTH] New user registered: {username} (id={user_id})")
-        return redirect(url_for("dashboard"))
+        print(f"🔥 [AUTH] New {role} registered: {name} (id={user_id})")
+        return redirect(url_for("caregiver_dashboard"))
 
-    return render_template("signup.html", errors=[], username="", email="", display_name="", role=role)
+    return render_template("signup.html", errors=[], name="", email="", role=role)
+
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if session.get("user_id"):
         return redirect(url_for("dashboard"))
+    
     if request.method == "POST":
-        login_id = request.form.get("login_id", "").strip()
+        email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
 
-        # Query by username or email in Firestore
-        users_ref = db.collection('users')
-        user_doc = None
-        
-        by_username = users_ref.where('username', '==', login_id).limit(1).get()
-        if len(by_username) > 0:
-            user_doc = by_username[0]
-        else:
-            by_email = users_ref.where('email', '==', login_id.lower()).limit(1).get()
-            if len(by_email) > 0:
-                user_doc = by_email[0]
+        users = db.collection('users').where('email', '==', email).limit(1).get()
+        if len(users) == 0:
+            return render_template("login.html", error="Invalid email or password.", email=email)
 
-        if not user_doc:
-            # Try Firebase Auth direct login if email was used
-            if "@" in login_id:
-                fb_uid = verify_firebase_auth_user(login_id.lower(), password)
-                if fb_uid:
-                    user_doc = db.collection('users').document(fb_uid).get()
-
-        if not user_doc or not user_doc.exists:
-            return render_template("login.html", error="Invalid username/email or password.", login_id=login_id)
-
+        user_doc = users[0]
         user_data = user_doc.to_dict()
+        
         if not check_password_hash(user_data.get("password_hash", ""), password):
-            # Verify via Firebase Auth API as secondary check
-            if user_data.get("email"):
-                fb_uid = verify_firebase_auth_user(user_data.get("email"), password)
-                if not fb_uid:
-                    return render_template("login.html", error="Invalid username/email or password.", login_id=login_id)
+            return render_template("login.html", error="Invalid email or password.", email=email)
 
-        user_id = user_doc.id
-        session["user_id"] = user_id
-        session["username"] = user_data.get("username")
-        session["display_name"] = user_data.get("display_name")
-        session["user_type"] = user_data.get("user_type", "child")
-        session["age_range"] = user_data.get("age_range", "11-13")
-        session["student_name"] = user_data.get("student_name") or user_data.get("display_name")
-        
-        # Restore learning profile if available
-        if user_data.get("learning_profile_json"):
-            try:
-                session["learning_profile"] = json.loads(user_data.get("learning_profile_json"))
-                if session["learning_profile"].get("student_name"):
-                    session["student_name"] = session["learning_profile"]["student_name"]
-            except Exception as e:
-                print(f"⚠️ [LOGIN] Error parsing learning_profile_json: {e}")
-        
-        # Transfer active topic to logged in user
-        if session.get("active_topic_id"):
-            try:
-                db.collection('user_topics').document(str(session["active_topic_id"])).update({'user_id': user_id})
-                print(f"🔥 [FIRESTORE AUTH] Transferred topic {session['active_topic_id']} to user {user_id}")
-            except Exception as e:
-                print(f"⚠️ [AUTH] Topic transfer error: {e}")
+        session["user_id"] = user_doc.id
+        session["name"] = user_data.get("name")
+        session["email"] = user_data.get("email")
+        session["role"] = user_data.get("role", "patient")
+        session.modified = True
 
-        print(f"🔥 [FIRESTORE AUTH] User logged in: {user_data.get('username')} (id={user_id})")
+        # Load patient profile if exists
+        if user_data.get("patient_profile_json"):
+            try:
+                session["patient_profile"] = json.loads(user_data["patient_profile_json"])
+            except:
+                pass
+        
+        # Store linked patient ID for caregiver/doctor
+        if user_data.get("linked_patient_id"):
+            session["linked_patient_id"] = user_data["linked_patient_id"]
+        
+        # Store patient code for patients
+        if user_data.get("patient_code"):
+            session["patient_code"] = user_data["patient_code"]
+
+        print(f"🔥 [AUTH] Login: {user_data.get('name')} ({user_data.get('role')})")
+        
+        role = user_data.get("role", "patient")
+        if role == 'caregiver':
+            return redirect(url_for("caregiver_dashboard"))
+        elif role == 'doctor':
+            return redirect(url_for("doctor_dashboard"))
         return redirect(url_for("dashboard"))
 
-    return render_template("login.html", error=None, login_id="")
+    return render_template("login.html", error=None, email="")
+
 
 @app.route("/logout")
 def logout():
-    _save_topic_progress()
     session.clear()
     return redirect(url_for("index"))
 
-# --- DASHBOARD ---
 
-@app.route("/dashboard")
+# --- CAREGIVER: ADD PATIENT SYSTEM ---
+
+@app.route("/api/add-patient", methods=["POST"])
 @login_required
-def dashboard():
-    user_id = session["user_id"]
-    user_doc = db.collection('users').document(str(user_id)).get()
-    user_data = user_doc.to_dict() if user_doc.exists else {}
+def api_add_patient():
+    """Caregiver creates a patient account with all profile details + PIN."""
+    if session.get("role") not in ("caregiver", "doctor"):
+        return jsonify({"error": "Only caregivers can add patients"}), 403
+    
+    caregiver_id = session["user_id"]
+    data = request.json or {}
+    
+    patient_name = data.get("patient_name", "").strip()
+    if not patient_name or len(patient_name) < 2:
+        return jsonify({"error": "Patient name must be at least 2 characters"}), 400
+    
+    # Generate 4-digit PIN and unique patient code
+    pin = ''.join(random.choices(string.digits, k=4))
+    patient_code = generate_patient_code()
+    
+    # Build patient profile from caregiver-provided data
+    profile = {
+        "patient_name": patient_name,
+        "age": int(data.get("age", 70)),
+        "gender": data.get("gender", "male"),
+        "region": data.get("region", "Assam"),
+        "language": data.get("language", "en"),
+        "dementia_stage": data.get("dementia_stage", "mild"),
+        "caregiver_name": session.get("name", ""),
+        "caregiver_email": session.get("email", ""),
+        "caregiver_relationship": data.get("caregiver_relationship", "Family"),
+        "doctor_name": data.get("doctor_name", ""),
+        "doctor_email": data.get("doctor_email", ""),
+        "alerts_enabled": True,
+        "daily_reports": True,
+        "sos_enabled": True,
+    }
+    
+    # Generate unique invite token
+    token = ''.join(random.choices(string.ascii_lowercase + string.digits, k=12))
+    base_url = request.host_url.rstrip("/")
+    invite_link = f"{base_url}/join/{token}"
+    
+    # Create patient account in Firebase
+    user_ref = db.collection('users').document()
+    user_data = {
+        'name': patient_name,
+        'email': f"patient_{patient_code.lower()}@neurolearn.care",
+        'password_hash': generate_password_hash(pin),
+        'pin': pin,
+        'role': 'patient',
+        'patient_code': patient_code,
+        'linked_caregiver_id': caregiver_id,
+        'patient_profile_json': json.dumps(profile),
+        'patient_name': patient_name,
+        'dementia_stage': profile["dementia_stage"],
+        'created_at': time.time(),
+        'created_via': 'caregiver_added',
+        'invite_token': token,
+        'needs_minicog': True  # Patient still needs to complete Mini-Cog
+    }
+    user_ref.set(user_data)
+    patient_id = user_ref.id
+    
+    # Store invite token
+    db.collection('invites').document(token).set({
+        'token': token,
+        'caregiver_id': caregiver_id,
+        'caregiver_name': session.get("name", "Caregiver"),
+        'caregiver_email': session.get("email", ""),
+        'patient_id': patient_id,
+        'patient_name': patient_name,
+        'pin': pin,
+        'created_at': time.time(),
+        'used': False
+    })
+    
+    # Link caregiver to this patient
+    db.collection('users').document(str(caregiver_id)).update({
+        'linked_patient_id': patient_id,
+        'linked_patient_name': patient_name,
+        'patient_pin': pin
+    })
+    
+    # Update caregiver session
+    session["linked_patient_id"] = patient_id
+    session.modified = True
+    
+    print(f"👴 [ADD-PATIENT] Caregiver {session.get('name')} added patient '{patient_name}' (PIN: {pin}, token: {token})")
+    
+    return jsonify({
+        "success": True,
+        "patient_id": patient_id,
+        "patient_name": patient_name,
+        "pin": pin,
+        "patient_code": patient_code,
+        "invite_link": invite_link,
+        "token": token
+    })
 
-    if not user_data.get("display_name"):
-        user_data["display_name"] = session.get("display_name") or session.get("student_name") or session.get("username") or "Learner"
-    if not user_data.get("username"):
-        user_data["username"] = session.get("username") or "learner"
 
-    created = user_data.get("created_at")
-    if hasattr(created, "strftime"):
-        user_data["created_at"] = created.strftime("%Y-%m-%d")
-    elif isinstance(created, str):
-        user_data["created_at"] = created[:10]
-    else:
-        user_data["created_at"] = "today"
-
-    user_ids_to_query = [user_id]
-    if session.get("guest_id"):
-        user_ids_to_query.append(session.get("guest_id"))
-        
-    topics_docs = []
-    seen_ids = set()
-    for uid in user_ids_to_query:
-        found = db.collection('user_topics').where('user_id', '==', uid).get()
-        for f in found:
-            if f.id not in seen_ids:
-                seen_ids.add(f.id)
-                topics_docs.append(f)
-        
-    if not topics_docs and session.get("active_topic_id"):
-        active_doc = db.collection('user_topics').document(str(session["active_topic_id"])).get()
-        if active_doc.exists and active_doc.id not in seen_ids:
-            topics_docs.append(active_doc)
-
-    topic_list = []
-    total_xp_all = 0
-    for doc in topics_docs:
-        t = doc.to_dict()
-        t_id = doc.id
-        syllabus = json.loads(t.get("syllabus_json") or "{}")
-        progress = json.loads(t.get("chapter_progress_json") or "{}")
-        total_chapters = len(syllabus.get("chapters", []))
-        completed_chapters = sum(1 for v in progress.values() if v.get("completed"))
-        t_xp = t.get("total_xp", 0) or 0
-        total_xp_all += t_xp
-        
-        last_acc = t.get("last_accessed")
-        last_acc_str = last_acc.strftime('%Y-%m-%d') if hasattr(last_acc, 'strftime') else 'Recently'
-
-        topic_list.append({
-            "id": t_id,
-            "topic_title": t.get("topic_title") or "Untitled Topic",
-            "subject_domain": t.get("subject_domain") or "General",
-            "total_chapters": total_chapters,
-            "completed_chapters": completed_chapters,
-            "total_xp": t_xp,
-            "last_accessed": last_acc_str,
-            "created_at": "Recently",
-            "progress_pct": int((completed_chapters / total_chapters * 100) if total_chapters > 0 else 0)
-        })
-
-    return render_template("dashboard.html",
-                           user=user_data,
-                           topics=topic_list,
-                           total_xp_all=total_xp_all)
-
-@app.route("/api/continue-topic/<topic_id>", methods=["POST"])
+@app.route("/api/generate-invite", methods=["POST"])
 @login_required
-def continue_topic(topic_id):
-    try:
-        user_id = session["user_id"]
-        doc = db.collection('user_topics').document(str(topic_id)).get()
-        if not doc.exists:
-            return jsonify({"error": "Topic not found"}), 404
+def generate_invite():
+    """Generate a new invite link for the currently linked patient (re-invite)."""
+    if session.get("role") not in ("caregiver", "doctor"):
+        return jsonify({"error": "Only caregivers can generate invite links"}), 403
+    
+    caregiver_id = session["user_id"]
+    linked_patient_id = session.get("linked_patient_id")
+    
+    # Get patient info if linked
+    patient_name = "Patient"
+    pin = ""
+    if linked_patient_id:
+        try:
+            p_doc = db.collection('users').document(str(linked_patient_id)).get()
+            if p_doc.exists:
+                p_data = p_doc.to_dict()
+                patient_name = p_data.get('patient_name', p_data.get('name', 'Patient'))
+                pin = p_data.get('pin', '')
+        except:
+            pass
+    
+    # Generate new invite token
+    token = ''.join(random.choices(string.ascii_lowercase + string.digits, k=12))
+    base_url = request.host_url.rstrip("/")
+    invite_link = f"{base_url}/join/{token}"
+    
+    db.collection('invites').document(token).set({
+        'token': token,
+        'caregiver_id': caregiver_id,
+        'caregiver_name': session.get("name", "Caregiver"),
+        'caregiver_email': session.get("email", ""),
+        'patient_id': linked_patient_id,
+        'patient_name': patient_name,
+        'pin': pin,
+        'created_at': time.time(),
+        'used': False
+    })
+    
+    print(f"🔗 [INVITE] New link created by {session.get('name')}: {token}")
+    return jsonify({"success": True, "invite_link": invite_link, "token": token})
 
-        topic = doc.to_dict()
-        allowed_ids = [user_id]
-        if session.get("guest_id"):
-            allowed_ids.append(session.get("guest_id"))
-            
-        if topic.get("user_id") not in allowed_ids:
-            return jsonify({"error": "Unauthorized"}), 403
 
-        _clear_old_chapters()
-
-        syllabus = json.loads(topic.get("syllabus_json") or "{}")
-        session["raw_content"] = topic.get("raw_content") or ""
-        session["ai_data"] = {
-            "syllabus": syllabus,
-            "chapters_generated": json.loads(topic.get("chapters_generated_json") or "{}")
-        }
-        session["chapter_progress"] = json.loads(topic.get("chapter_progress_json") or "{}")
-        session["total_xp"] = topic.get("total_xp", 0) or 0
-        session["learning_profile"] = json.loads(topic.get("learning_profile_json") or "{}")
-        session["cognitive_style"] = topic.get("cognitive_style") or "focus"
-        session["gender"] = topic.get("gender") or "female"
-        session["emotion"] = topic.get("emotion") or "okay"
-        session["student_name"] = session.get("display_name", "Learner")
-        session["active_topic_id"] = str(doc.id)
-        session["user_type"] = "child"
+@app.route("/join/<token>", methods=["GET", "POST"])
+def join_via_invite(token):
+    """Patient opens invite link and logs in with their 4-digit PIN."""
+    
+    # Validate invite
+    invite_doc = db.collection('invites').document(token).get()
+    if not invite_doc.exists:
+        return render_template("join_invite.html", token=token, 
+                               caregiver_name="", error="Invalid or expired invite link.",
+                               patient_name="", mode="invalid")
+    
+    invite = invite_doc.to_dict()
+    caregiver_name = invite.get("caregiver_name", "Your Caregiver")
+    patient_name = invite.get("patient_name", "")
+    patient_id = invite.get("patient_id")
+    correct_pin = invite.get("pin", "")
+    
+    if request.method == "POST":
+        entered_pin = request.form.get("pin", "").strip()
+        
+        if not entered_pin or len(entered_pin) != 4:
+            return render_template("join_invite.html", token=token, caregiver_name=caregiver_name,
+                                   patient_name=patient_name, error="Please enter your 4-digit PIN.", mode="pin")
+        
+        # Verify PIN against invite record or patient record
+        pin_valid = False
+        if correct_pin and entered_pin == correct_pin:
+            pin_valid = True
+        elif patient_id:
+            # Also check directly on patient document
+            try:
+                p_doc = db.collection('users').document(str(patient_id)).get()
+                if p_doc.exists:
+                    stored_pin = p_doc.to_dict().get('pin', '')
+                    if entered_pin == stored_pin:
+                        pin_valid = True
+            except:
+                pass
+        
+        if not pin_valid:
+            return render_template("join_invite.html", token=token, caregiver_name=caregiver_name,
+                                   patient_name=patient_name, error="Wrong PIN. Please try again.", mode="pin")
+        
+        # Load patient data
+        p_data = {}
+        patient_code = ""
+        profile = {}
+        needs_minicog = True
+        if patient_id:
+            try:
+                p_doc = db.collection('users').document(str(patient_id)).get()
+                if p_doc.exists:
+                    p_data = p_doc.to_dict()
+                    patient_code = p_data.get('patient_code', '')
+                    needs_minicog = p_data.get('needs_minicog', True)
+                    if p_data.get('patient_profile_json'):
+                        profile = json.loads(p_data['patient_profile_json'])
+            except:
+                pass
+        
+        # Mark invite as used
+        db.collection('invites').document(token).update({'used': True, 'used_at': time.time()})
+        
+        # Log in the patient
+        actual_name = p_data.get('patient_name', p_data.get('name', patient_name))
+        session["user_id"] = patient_id
+        session["name"] = actual_name
+        session["email"] = p_data.get("email", "")
+        session["role"] = "patient"
+        session["patient_code"] = patient_code
+        session["patient_profile"] = profile
+        session["patient_name"] = actual_name
+        if profile.get("language"):
+            session["preferred_language"] = profile["language"]
         session.modified = True
-
-        db.collection('user_topics').document(str(topic_id)).update({
-            'last_accessed': firestore.SERVER_TIMESTAMP
-        })
-
-        print(f"🔥 [CONTINUE-TOPIC] Restored topic {topic_id} from Firestore")
-        return jsonify({"redirect": url_for("chapters")})
-    except Exception as e:
-        import traceback
-        with open("continue_error_log.txt", "w", encoding="utf-8") as f:
-            f.write(traceback.format_exc())
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/api/delete-topic/<topic_id>", methods=["POST"])
-@login_required
-def delete_topic(topic_id):
-    user_id = session["user_id"]
-    doc_ref = db.collection('user_topics').document(str(topic_id))
-    doc = doc_ref.get()
-    allowed_ids = [user_id]
-    if session.get("guest_id"):
-        allowed_ids.append(session.get("guest_id"))
         
-    if doc.exists and doc.to_dict().get("user_id") in allowed_ids:
-        doc_ref.delete()
-    return jsonify({"status": "deleted"})
+        print(f"🔑 [JOIN] Patient '{actual_name}' logged in via invite link")
+        
+        # If patient still needs Mini-Cog, go to onboarding
+        if needs_minicog:
+            return redirect(url_for("onboarding"))
+        return redirect(url_for("dashboard"))
+    
+    # GET — show PIN entry form
+    return render_template("join_invite.html", token=token, caregiver_name=caregiver_name,
+                           patient_name=patient_name, error=None, mode="pin")
+
+
+@app.route("/login-pin", methods=["GET", "POST"])
+def login_pin():
+    """PIN-based login for patients (dementia-friendly — just name + 4 digits)."""
+    if session.get("user_id"):
+        return redirect(url_for("dashboard"))
+    
+    if request.method == "POST":
+        patient_code = request.form.get("patient_code", "").strip().upper()
+        pin = request.form.get("pin", "").strip()
+        
+        if not patient_code or not pin:
+            return render_template("login_pin.html", error="Please enter your code and PIN.")
+        
+        # Find patient by code
+        patients = db.collection('users').where('patient_code', '==', patient_code).limit(1).get()
+        if len(patients) == 0:
+            return render_template("login_pin.html", error="Patient code not found.")
+        
+        patient_doc = patients[0]
+        patient_data = patient_doc.to_dict()
+        
+        # Check PIN
+        if patient_data.get("pin") != pin:
+            return render_template("login_pin.html", error="Wrong PIN. Please try again.")
+        
+        # Login
+        session["user_id"] = patient_doc.id
+        session["name"] = patient_data.get("name")
+        session["email"] = patient_data.get("email")
+        session["role"] = "patient"
+        session["patient_code"] = patient_code
+        session["patient_name"] = patient_data.get("patient_name") or patient_data.get("name", "Patient")
+        
+        # Load profile
+        profile = {}
+        if patient_data.get("patient_profile_json"):
+            try:
+                profile = json.loads(patient_data["patient_profile_json"])
+                session["patient_profile"] = profile
+            except:
+                pass
+        
+        # Set preferred_language to patient's assigned language
+        patient_lang = profile.get("language") or patient_data.get("language") or "en"
+        session["preferred_language"] = patient_lang
+        session.modified = True
+        
+        print(f"🔑 [PIN LOGIN] {patient_data.get('name')} logged in via PIN (lang: {patient_lang})")
+        return redirect(url_for("dashboard"))
+    
+    return render_template("login_pin.html", error=None)
+
 
 # --- MAIN ROUTES ---
 
@@ -625,1265 +762,1263 @@ def delete_topic(topic_id):
 def index():
     return render_template("index.html")
 
-@app.route("/upload", methods=["POST"])
-def upload():
-    user_type = request.form.get("user_type")
-    content_type = request.form.get("content_type") # 'file' or 'text'
-    
-    raw_text = ""
-    if content_type == "file":
-        if "file" not in request.files:
-            return jsonify({"error": "No file uploaded"}), 400
-        file = request.files["file"]
-        raw_text = extract_text_from_pdf(file)
-    else:
-        raw_text = request.form.get("text_input", "").strip()
 
-    if not raw_text:
-        return jsonify({"error": "No content provided"}), 400
-
-    session["user_type"] = user_type
-    session["raw_content"] = raw_text
-    session["word_count"] = len(raw_text.split())
-    session["ai_data"] = {"syllabus": None}  # Initialize ai_data dictionary
-    session["chapter_progress"] = {}  # Initialize chapter progress tracking
-    
-    if user_type == "parent":
-        return jsonify({"redirect": url_for("parent_form")})
-    else:
-        # Default profile for child
-        session["learning_profile"] = {
-            "student_name": "Learner",
-            "age_range": session.get("age_range", "11-13"),
-            "has_adhd": False, "has_dyslexia": False, "has_autism": False,
-            "has_anxiety": False, "slow_processing": False, 
-            "working_memory": False, "sensory_sensitive": False,
-            "confidence_level": "medium"
-        }
-        return jsonify({"redirect": url_for("onboarding")})
-
-@app.route("/parent-form", methods=["GET", "POST"])
-def parent_form():
+@app.route("/onboarding", methods=["GET", "POST"])
+@login_required
+def onboarding():
     if request.method == "POST":
-        data = request.form
-        needs = data.getlist("needs")
+        data = request.json or request.form
         
-        # Determine ADHD profile
-        focus_type = data.get("focus_type", "typical")
-        has_adhd = focus_type in ["adhd_mild", "adhd_severe", "adhd_hyperfocus"] or data.get("adhd_diagnosis") == "yes"
-        adhd_subtype = focus_type
+        step = data.get("step", "info")
         
-        # Parse special interests
-        special_interests = data.getlist("special_interests")
-        other_interest = data.get("special_interest_other", "").strip()
-        if other_interest:
-            special_interests.append(other_interest)
+        if step == "complete":
+            # Merge Mini-Cog result into existing profile (set by caregiver)
+            profile = session.get("patient_profile", {})
+            if not profile:
+                # Fallback: load from Firebase if not in session
+                try:
+                    u_doc = db.collection('users').document(str(session["user_id"])).get()
+                    if u_doc.exists and u_doc.to_dict().get('patient_profile_json'):
+                        profile = json.loads(u_doc.to_dict()['patient_profile_json'])
+                except:
+                    pass
+            
+            # Update only Mini-Cog result; rest of profile was set by caregiver
+            profile["minicog_score"] = data.get("minicog_score", {})
+            profile["patient_name"] = profile.get("patient_name", session.get("name", "Patient"))
+            
+            session["patient_profile"] = profile
+            session["patient_name"] = profile["patient_name"]
+            if profile.get("language"):
+                session["preferred_language"] = profile["language"]
+            session.modified = True
+            
+            # Save updated profile to Firebase and mark minicog complete
+            user_id = session.get("user_id")
+            if user_id:
+                db.collection('users').document(str(user_id)).update({
+                    'patient_profile_json': json.dumps(profile),
+                    'needs_minicog': False
+                })
+                print(f"🔥 [ONBOARDING] Mini-Cog complete for: {profile['patient_name']}")
+            
+            return jsonify({"success": True, "redirect": url_for("dashboard")})
         
-        # Parse processing speed to numeric multiplier
-        proc_speed_map = {"typical": 1.0, "slight": 1.25, "noticeable": 1.5, "very_slow": 2.0}
-        processing_speed_raw = data.get("processing_speed", "typical")
-        quiz_time_multiplier = proc_speed_map.get(processing_speed_raw, 1.0)
+        elif step == "minicog_words":
+            lang = data.get("language") or session.get("preferred_language", "en")
+            words = generate_minicog_words(lang)
+            session["minicog_words"] = words
+            session.modified = True
+            return jsonify({"success": True, "words": words})
         
-        # TTS rate from processing speed
-        tts_rate_map = {"typical": "+0%", "slight": "-10%", "noticeable": "-20%", "very_slow": "-30%"}
+        elif step == "minicog_score":
+            words_recalled = int(data.get("words_recalled", 0))
+            clock_score = int(data.get("clock_score", 0))
+            result = score_minicog(words_recalled, clock_score)
+            return jsonify({"success": True, "result": result})
+    
+    # GET — load patient profile to show their name, generate Mini-Cog words
+    profile = session.get("patient_profile", {})
+    if not profile:
+        try:
+            u_doc = db.collection('users').document(str(session["user_id"])).get()
+            if u_doc.exists and u_doc.to_dict().get('patient_profile_json'):
+                profile = json.loads(u_doc.to_dict()['patient_profile_json'])
+                session["patient_profile"] = profile
+                session.modified = True
+        except:
+            pass
+    
+    lang = profile.get("language") or session.get("preferred_language") or "en"
+    minicog_words = generate_minicog_words(lang)
+    session["minicog_words"] = minicog_words
+    session.modified = True
+    
+    return render_template("onboarding.html", 
+                           name=profile.get("patient_name", session.get("name", "")),
+                           profile=profile,
+                           minicog_words=minicog_words)
+
+
+
+
+@app.route("/dashboard")
+@login_required
+def dashboard():
+    user_id = session["user_id"]
+    role = session.get("role", "patient")
+    
+    if role in ("caregiver", "doctor"):
+        return redirect(url_for("caregiver_dashboard"))
+    
+    profile = session.get("patient_profile", {})
+    patient_name = profile.get("patient_name", session.get("name", "Patient"))
+    
+    # Auto-sync user to Firebase RTDB if created during earlier offline session
+    try:
+        u_doc = db.collection('users').document(str(user_id)).get()
+        if not u_doc.exists:
+            db.collection('users').document(str(user_id)).set({
+                'name': session.get('name', patient_name),
+                'email': session.get('email', ''),
+                'role': role,
+                'patient_code': session.get('patient_code', ''),
+                'patient_profile_json': json.dumps(profile) if profile else '',
+                'patient_name': patient_name,
+                'dementia_stage': profile.get('dementia_stage', 'mild'),
+                'created_at': time.time()
+            })
+    except Exception as e:
+        print(f"⚠️ [SYNC] User sync error: {e}")
+
+    # Get daily routine
+    routine = get_daily_routine()
+    
+    # Check game history for today's completions
+    game_results = []
+    try:
+        docs = db.collection('game_results').where('user_id', '==', user_id).get()
+        game_results = [d.to_dict() for d in docs]
+    except:
+        pass
+    
+    # Today's results
+    import datetime
+    today = datetime.date.today().isoformat()
+    today_results = [g for g in game_results if g.get("date") == today]
+    
+    # Mark completed exercises
+    completed_types = set(g.get("game_type") for g in today_results)
+    for item in routine:
+        if item["game_type"] in completed_types:
+            item["completed"] = True
+    
+    # Calculate streak
+    streak = session.get("streak", 0)
+    total_xp = sum(g.get("xp", 0) for g in game_results)
+    total_games = len(game_results)
+    
+    return render_template("dashboard.html",
+                           patient_name=patient_name,
+                           routine=routine,
+                           streak=streak,
+                           total_xp=total_xp,
+                           total_games=total_games,
+                           today_completed=len(today_results),
+                           profile=profile)
+
+
+# --- COGNITIVE GAMES ---
+
+@app.route("/game/<game_type>")
+@login_required
+def game(game_type):
+    if game_type not in ("recognition", "pattern", "bagh-baak"):
+        return redirect(url_for("dashboard"))
+    
+    profile = session.get("patient_profile", {})
+    language = profile.get("language", "en")
+    
+    # Get adaptive difficulty
+    game_history = session.get("game_history", [])
+    difficulty = get_adaptive_difficulty(game_history)
+    
+    # Bagh-Baak uses its own template
+    if game_type == "bagh-baak":
+        return render_template("game_bagh.html",
+                               difficulty=difficulty,
+                               language=language,
+                               patient_name=profile.get("patient_name", "Patient"))
+    
+    return render_template("game.html",
+                           game_type=game_type,
+                           difficulty=difficulty,
+                           language=language,
+                           patient_name=profile.get("patient_name", "Patient"))
+
+
+@app.route("/api/game-data/<game_type>")
+@login_required
+def api_game_data(game_type):
+    """Generate game content via cognitive engine. Uses family photos if available."""
+    profile = session.get("patient_profile", {})
+    language = profile.get("language", "en")
+    user_id = session["user_id"]
+    
+    game_history = session.get("game_history", [])
+    difficulty = get_adaptive_difficulty(game_history)
+    
+    if game_type == "recognition":
+        # Fetch uploaded family photos for personalized game
+        family_photos = []
+        try:
+            photo_docs = db.collection('family_photos').where('patient_id', '==', user_id).get()
+            family_photos = [d.to_dict() for d in photo_docs]
+        except:
+            pass
         
-        # Parse confidence level from slider
-        confidence_raw = int(data.get("confidence_level", "3"))
-        confidence_level = "low" if confidence_raw <= 2 else ("high" if confidence_raw >= 4 else "medium")
+        game_data = generate_recognition_game(difficulty, language, family_photos=family_photos)
+    elif game_type == "pattern":
+        game_data = generate_pattern_game(difficulty, language)
+    elif game_type == "bagh-baak":
+        # Bagh-Baak is client-side; return config only
+        return jsonify({"game_type": "bagh-baak", "difficulty": difficulty})
+    else:
+        return jsonify({"error": "Unknown game type"}), 400
+    
+    return jsonify(game_data)
+
+
+@app.route("/api/game-complete", methods=["POST"])
+@login_required
+def api_game_complete():
+    """Submit game results, update scores, check for alerts."""
+    data = request.json
+    game_type = data.get("game_type")
+    correct = data.get("correct", 0)
+    total = data.get("total", 0)
+    domain = data.get("domain", "Memory")
+    
+    # Calculate score
+    result = calculate_game_score(correct, total)
+    result["game_type"] = game_type
+    result["domain"] = domain
+    result["date"] = time.strftime("%Y-%m-%d")
+    result["timestamp"] = time.time()
+    
+    # Update session history
+    if "game_history" not in session:
+        session["game_history"] = []
+    session["game_history"].append(result)
+    session["total_xp"] = session.get("total_xp", 0) + result["xp"]
+    session.modified = True
+    
+    # Save to Firestore
+    user_id = session["user_id"]
+    result["user_id"] = user_id
+    db.collection('game_results').add(result)
+    
+    # Check for alerts
+    domain_scores = calculate_domain_scores(session.get("game_history", []))
+    overall_score = calculate_overall_score(domain_scores)
+    
+    previous_scores = session.get("previous_domain_scores")
+    alerts = check_for_alerts(domain_scores, previous_scores)
+    session["previous_domain_scores"] = domain_scores
+    session.modified = True
+    
+    # Send alert emails if needed
+    profile = session.get("patient_profile", {})
+    caregiver_email = profile.get("caregiver_email")
+    if caregiver_email and alerts:
+        for alert in alerts:
+            if alert["type"] in ("critical", "warning"):
+                send_smart_alert(
+                    profile.get("patient_name", "Patient"),
+                    caregiver_email,
+                    alert["type"],
+                    alert["message"]
+                )
+    
+    print(f"🎮 [GAME] {game_type} complete: {correct}/{total} = {result['accuracy']}% | XP: {result['xp']}")
+    
+    return jsonify({
+        "success": True,
+        "result": result,
+        "domain_scores": domain_scores,
+        "overall_score": overall_score,
+        "alerts": alerts
+    })
+
+
+@app.route("/results")
+@login_required
+def results():
+    last_result = {}
+    if session.get("game_history"):
+        last_result = session["game_history"][-1]
+    
+    profile = session.get("patient_profile", {})
+    return render_template("results.html",
+                           result=last_result,
+                           total_xp=session.get("total_xp", 0),
+                           patient_name=profile.get("patient_name", "Patient"))
+
+
+# --- AI MEMORY COMPANION ---
+
+@app.route("/companion")
+@login_required
+def companion():
+    profile = session.get("patient_profile", {})
+    lang = session.get("preferred_language") or profile.get("language") or "en"
+    p_name = session.get("patient_name") or session.get("name") or profile.get("patient_name", "Patient")
+    return render_template("companion.html",
+                           patient_name=p_name,
+                           language=lang)
+
+
+@app.route("/api/companion-chat", methods=["POST"])
+@login_required
+def api_companion_chat():
+    """AI Memory Companion — reminiscence therapy chatbot."""
+    # Language fallback messages (localized)
+    lang_fallbacks = {
+        "mr":  "माफ करा, मला नीट कळले नाही. कृपया पुन्हा सांगाल का?",
+        "hi":  "माफ कीजिए, मुझे सुनाई नहीं दिया. क्या आप फिर से कह सकते हैं?",
+        "as":  "মাফ কৰিব, মই ভালদৰে বুজিব পৰা নাইলোং। আথাই আবাৰ কৰাৱকৈ কব?",
+        "bn":  "মাফ করবেন, আমি ঠিকমতো বুঝতে পারিনি। আবার বলবেন কি?",
+        "mni": "মাফ করো, আমি ठीकমতো বুঝিনি। আবার বলবে কি?",
+        "ta":  "மன்னிக்கவும், எனக்கு சரியாக கேட்கவில்லை. தயவுசெய்து மீண்டும் சொல்லுங்கள்?",
+        "en":  "I'm sorry, I had a little trouble there. Could you say that again?"
+    }
+
+    try:
+        data = request.json
+        message = data.get("message", "").strip()
         
-        session["learning_profile"] = {
-            # Identity
-            "student_name": data.get("student_name", "Learner"),
-            "age_range": data.get("age_range", "11-13"),
-            "gender": data.get("gender", "no_preference"),
-            "home_language": data.get("home_language", "en"),
-            
-            # ADHD
-            "has_adhd": has_adhd,
-            "adhd_subtype": adhd_subtype,
-            "session_length_pref": int(data.get("session_length", "10")),
-            "special_interests": special_interests,
-            
-            # Reading/Dyslexia
-            "has_dyslexia": any(x in needs for x in ["dyslexia_decoding", "dyslexia_tracking", "dyslexia_spelling"]),
-            "dyslexia_decoding": "dyslexia_decoding" in needs,
-            "dyslexia_tracking": "dyslexia_tracking" in needs,
-            "irlen_syndrome": "irlen_syndrome" in needs,
-            
-            # Writing/Dysgraphia
-            "has_dysgraphia": any(x in needs for x in ["dysgraphia_motor", "dysgraphia_organisation", "dysgraphia_preference"]),
-            "dysgraphia_motor": "dysgraphia_motor" in needs,
-            "dysgraphia_organisation": "dysgraphia_organisation" in needs,
-            "voice_first_input": "dysgraphia_preference" in needs or data.get("input_mode") == "voice",
-            
-            # Math/Dyscalculia
-            "has_dyscalculia": any(x in needs for x in ["dyscalculia_quantity", "dyscalculia_sequence"]),
-            "dyscalculia_visual_numbers": "dyscalculia_quantity" in needs,
-            
-            # Processing
-            "slow_processing": processing_speed_raw in ["noticeable", "very_slow"],
-            "processing_speed_raw": processing_speed_raw,
-            "quiz_time_multiplier": quiz_time_multiplier,
-            "default_tts_rate": tts_rate_map.get(processing_speed_raw, "+0%"),
-            
-            # Memory
-            "working_memory": data.get("working_memory", "typical") != "typical",
-            "working_memory_severity": data.get("working_memory", "typical"),
-            
-            # Autism
-            "has_autism": any(x in needs for x in ["autism_literal", "autism_routine", "autism_predictability", "autism_sensory"]),
-            "autism_literal": "autism_literal" in needs,
-            "autism_routine": "autism_routine" in needs,
-            "autism_predictability": "autism_predictability" in needs,
-            "autism_special_interest": "autism_special_interest" in needs,
-            
-            # Anxiety
-            "has_anxiety": any(x in needs for x in ["anxiety_tests", "anxiety_overwhelm", "anxiety_reassurance", "anxiety_avoidance"]),
-            "anxiety_tests": "anxiety_tests" in needs,
-            "anxiety_overwhelm": "anxiety_overwhelm" in needs,
-            "anxiety_reassurance": "anxiety_reassurance" in needs,
-            "hide_leaderboard": "anxiety_tests" in needs or "anxiety_avoidance" in needs,
-            
-            # Sensory
-            "sensory_sensitive": any(x in needs for x in ["sensory_visual", "sensory_auditory", "sensory_clutter", "autism_sensory"]),
-            "sensory_visual": "sensory_visual" in needs,
-            "sensory_auditory": "sensory_auditory" in needs,
-            "sensory_clutter": "sensory_clutter" in needs,
-            
-            # Confidence & notes
-            "confidence_level": confidence_level,
-            "confidence_raw": confidence_raw,
-            "parent_notes": data.get("parent_notes", "")[:200],
+        if not message:
+            return jsonify({"error": "No message"}), 400
+        
+        profile = session.get("patient_profile", {})
+        patient_name = session.get("patient_name") or session.get("name") or profile.get("patient_name", "Friend")
+        age = profile.get("age", 70)
+        region = profile.get("region", "India")
+        stage = profile.get("dementia_stage", "mild")
+        
+        # Detect language: session preferred > request body > profile > cookie
+        language = (
+            session.get("preferred_language")
+            or data.get("language")
+            or profile.get("language")
+            or request.cookies.get("lang")
+            or "en"
+        )
+        if language not in ("en", "hi", "mr", "as", "bn", "mni", "ta"):
+            language = "en"
+        
+        # Build conversation history
+        if "companion_history" not in session:
+            session["companion_history"] = []
+        
+        session["companion_history"].append({"role": "user", "content": message})
+        
+        # Keep last 10 messages for context
+        recent_history = session["companion_history"][-10:]
+        history_text = "\n".join([f"{'Patient' if m['role']=='user' else 'Companion'}: {m['content']}" for m in recent_history[:-1]])
+        
+        lang_map = {
+            "hi":  "Hindi (हिन्दी)",
+            "mr":  "Marathi (मराठी)",
+            "as":  "Assamese (অসমীয়া)",
+            "bn":  "Bengali (বাংলা)",
+            "mni": "Manipuri/Meitei (মৈতৈলোন্)",
+            "ta":  "Tamil (தமிழ்)",
+            "en":  "English"
         }
+        lang_name = lang_map.get(language, "English")
         
-        session["student_name"] = session["learning_profile"]["student_name"]
+        # RAG Context Retrieval: retrieve top relevant caregiver notes & personal facts
+        patient_id = session.get("linked_patient_id") or session.get("user_id")
+        rag_context = query_care_context(patient_id, message, db=db, top_k=3)
+        rag_prompt_fragment = format_context_for_prompt(rag_context)
         
-        # Persist profile to Firestore user document if logged in
+        system_prompt = f"""You are a warm, caring AI Memory Companion for an elderly dementia patient in India.
+
+PATIENT PROFILE:
+- Name: {patient_name}
+- Age: {age}
+- Region: {region}
+- Dementia Stage: {stage}
+- Language: {lang_name}
+{rag_prompt_fragment}
+
+CRITICAL LANGUAGE RULE: You MUST respond ONLY in {lang_name}. Every single word of your response must be in {lang_name}. Do NOT mix languages.
+
+YOUR ROLE (Reminiscence Therapy):
+- Be extremely warm, patient, and encouraging
+- Ask about childhood memories, family, festivals (Bihu, Diwali, Holi, Ganesh Chaturthi), food, music
+- NEVER say "you already told me that" — always respond as if hearing it for the first time
+- Keep responses to 2-3 sentences maximum
+- Use simple, clear language appropriate for elderly
+- If the patient seems confused, gently redirect to a comforting topic
+- Occasionally mention cultural elements from {region} (local festivals, foods, landmarks)
+- Always end with a gentle follow-up question
+- Use warm emoji sparingly (🌸, 😊, 🎵, ☀️)
+
+CONVERSATION HISTORY:
+{history_text}"""
+
+        user_prompt = f"Patient says: {message}"
+        
+        model = os.getenv("COMPANION_MODEL", "groq/compound-mini")
+        response = call_llm(system_prompt, user_prompt, model=model)
+        response = response.strip().strip('"')
+        
+        session["companion_history"].append({"role": "assistant", "content": response})
+        session.modified = True
+        
+        # Save conversation to Firebase
         user_id = session.get("user_id")
         if user_id:
             try:
-                db.collection('users').document(str(user_id)).update({
-                    'learning_profile_json': json.dumps(session["learning_profile"]),
-                    'student_name': session["student_name"]
+                db.collection('companion_logs').add({
+                    'user_id': user_id,
+                    'patient_message': message,
+                    'ai_response': response,
+                    'language': language,
+                    'timestamp': time.time()
                 })
-                print(f"🔥 [FIRESTORE] Saved parent learning_profile for user {user_id}")
-            except Exception as e:
-                print(f"⚠️ [PARENT-FORM] Error saving profile to user doc: {e}")
+            except Exception:
+                pass
+        
+        safe_patient = message[:40].encode('ascii', 'replace').decode()
+        safe_ai = response[:60].encode('ascii', 'replace').decode()
+        print(f"💬 [COMPANION] [{language}] Patient: {safe_patient}... | AI: {safe_ai}...")
+        return jsonify({"success": True, "response": response, "language": language, "rag_active": bool(rag_context)})
+        
+    except Exception as e:
+        print(f"✗ [COMPANION] Error: {str(e)}")
+        # Return localized fallback
+        lang = (
+            request.json.get("language") if request.json else None
+            or request.cookies.get("lang", "en")
+        )
+        fallback = lang_fallbacks.get(lang, lang_fallbacks["en"])
+        return jsonify({"success": True, "response": fallback, "language": lang})
 
-        # Persist profile to Firestore topic document if active topic exists
-        topic_id = session.get("active_topic_id")
-        if topic_id:
-            try:
-                db.collection('user_topics').document(str(topic_id)).update({
-                    'learning_profile_json': json.dumps(session["learning_profile"])
-                })
-                print(f"🔥 [FIRESTORE] Saved parent learning_profile for topic {topic_id}")
-            except Exception as e:
-                print(f"⚠️ [PARENT-FORM] Error saving profile to topic doc: {e}")
 
-        return redirect(url_for("onboarding"))
+# --- CAREGIVER NOTES (RAG MEMORY ANCHORS) ---
+
+@app.route("/api/caregiver-notes", methods=["GET", "POST"])
+@login_required
+def api_caregiver_notes():
+    """Get or save caregiver knowledge notes for RAG memory companion."""
+    patient_id = session.get("linked_patient_id") or session.get("user_id")
     
-    return render_template("parent_form.html")
-
-@app.route("/onboarding", methods=["GET", "POST"])
-def onboarding():
     if request.method == "POST":
-        data = request.json
-        session["student_name"] = data.get("name", session.get("student_name", "Learner"))
-        session["cognitive_style"] = data.get("style", "focus")
-        session["gender"] = data.get("voice", "standard_female")
-        session["emotion"] = data.get("emotion", "okay")
-        session["preferred_language"] = data.get("preferred_language", "en")
-        
-        # Trigger Pipeline Reset — clear stale DB data
-        _clear_old_chapters()
-        session["ai_data"] = {"chapters": {}, "syllabus": None}
-        session["chapter_progress"] = {}
-        session["total_xp"] = 0
-        
-        return jsonify({"redirect": url_for("loading_page")})
+        data = request.json or {}
+        save_caregiver_notes(patient_id, data, db=db)
+        print(f"📝 [RAG] Caregiver notes updated for patient {patient_id}")
+        return jsonify({"success": True, "message": "Care notes saved & indexed successfully!"})
     
-    return render_template("onboarding.html", 
-                           name=session.get("student_name", ""),
-                           user_type=session.get("user_type"))
-
-@app.route("/loading")
-def loading_page():
-    return render_template("loading.html")
-
-@app.route("/api/init-pipeline", methods=["POST"])
-def init_pipeline():
-    """
-    Synchronous endpoint to initialize pipeline.
-    Generates syllabus and saves to session.
-    Called from loading page via fetch, not as streaming.
-    """
+    # GET: Return indexed chunks & raw notes
+    chunks = load_patient_chunks(patient_id, db=db)
+    raw = {}
     try:
-        raw_text = session.get("raw_content", "")
-        
-        print(f"DEBUG: init_pipeline called")
-        print(f"DEBUG: raw_content exists: {bool(raw_text)}")
-        
-        if not raw_text:
-            return jsonify({
-                "success": False,
-                "error": "No content detected. Please go back and upload a document."
-            }), 400
-        
-        # Clear old chapters before generating new syllabus
-        _clear_old_chapters()
-        
-        # Generate syllabus
-        print("DEBUG: Generating syllabus...")
-        preferred_language = session.get("preferred_language", "en")
-        syllabus = generate_syllabus(raw_text, preferred_language=preferred_language)
-        print(f"DEBUG: Syllabus generated with {len(syllabus.get('chapters', []))} chapters")
-        
-        # Initialize ai_data if needed
-        if "ai_data" not in session:
-            session["ai_data"] = {}
-        if "chapter_progress" not in session:
-            session["chapter_progress"] = {}
-        
-        # Save syllabus to session
-        session["ai_data"]["syllabus"] = syllabus
-        session["ai_data"]["chapters_generated"] = {}
-        
-        # Initialize chapter_progress
-        chapters = syllabus.get("chapters", [])
-        for chapter in chapters:
-            c_id = str(chapter["id"])
-            if c_id not in session["chapter_progress"]:
-                session["chapter_progress"][c_id] = {
-                    "completed": False,
-                    "game_score": 0,
-                    "quiz_score": 0,
-                    "xp_earned": 0
-                }
-        
-        session.modified = True
-        print(f"DEBUG: Session saved with syllabus")
-        
-        # Persist topic document to Firestore for both logged-in and guest users
-        topic_title = syllabus.get("topic_title", "Learning Module")
-        subject_domain = syllabus.get("subject_domain", "General")
-        
-        user_id = session.get("user_id")
-        if not user_id:
-            import uuid
-            if "guest_id" not in session:
-                session["guest_id"] = "guest_" + str(uuid.uuid4())[:8]
-            user_id = session["guest_id"]
+        doc = db.collection("caregiver_notes").document(str(patient_id)).get()
+        if doc.exists:
+            raw = doc.to_dict().get("raw_notes", {})
+    except Exception:
+        pass
+    return jsonify({"success": True, "chunks": chunks, "raw_notes": raw})
 
-        topic_ref = db.collection('user_topics').document()
-        topic_data = {
-            'user_id': user_id,
-            'topic_title': topic_title,
-            'subject_domain': subject_domain,
-            'syllabus_json': json.dumps(syllabus),
-            'raw_content': session.get("raw_content", ""),
-            'learning_profile_json': json.dumps(session.get("learning_profile", {})),
-            'cognitive_style': session.get("cognitive_style", "focus"),
-            'gender': session.get("gender", "female"),
-            'emotion': session.get("emotion", "okay"),
-            'chapter_progress_json': json.dumps(session.get("chapter_progress", {})),
-            'chapters_generated_json': json.dumps({}),
-            'total_xp': 0,
-            'created_at': time.time(),
-            'last_accessed': time.time()
-        }
-        topic_ref.set(topic_data)
-        session["active_topic_id"] = str(topic_ref.id)
-        session.modified = True
-        print(f"🔥 [FIRESTORE] Created user_topic id={topic_ref.id} for user {user_id}")
-        
-        return jsonify({
-            "success": True,
-            "chapters_count": len(chapters),
-            "message": f"Syllabus ready with {len(chapters)} chapters"
-        })
-    
-    except Exception as e:
-        print(f"ERROR in init_pipeline: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
 
-@app.route("/api/pipeline-status")
-def pipeline_status():
-    raw_text = session.get("raw_content", "")
-    learning_profile = session.get("learning_profile", {})
-    
-    @stream_with_context
-    def generate():
-        if not raw_text:
-            error_msg = "No content detected. Please go back and upload a document."
-            yield f"data: {json.dumps({'error': error_msg, 'complete': True})}\n\n"
-            return
 
-        try:
-            yield f"data: {json.dumps({'message': 'Building your personalized syllabus...', 'progress': 30, 'complete': False})}\n\n"
-            time.sleep(1)
-            
-            _clear_old_chapters()
-            
-            preferred_language = session.get("preferred_language", "en")
-            syllabus = generate_syllabus(raw_text, preferred_language=preferred_language)
-            
-            session["ai_data"]["syllabus"] = syllabus
-            session["ai_data"]["chapters_generated"] = {}
-            
-            chapters = syllabus.get("chapters", [])
-            for chapter in chapters:
-                c_id = str(chapter["id"])
-                if c_id not in session["chapter_progress"]:
-                    session["chapter_progress"][c_id] = {
-                        "completed": False, 
-                        "game_score": 0, 
-                        "quiz_score": 0, 
-                        "xp_earned": 0
-                    }
-            
-            session.modified = True
-            
-            yield f"data: {json.dumps({'message': f'Syllabus ready! {len(chapters)} chapters available.', 'progress': 80, 'complete': False})}\n\n"
-            time.sleep(1)
-            
-            yield f"data: {json.dumps({'message': 'Launching learning experience...', 'progress': 100, 'complete': True})}\n\n"
-            
-        except Exception as e:
-            yield f"data: {json.dumps({'error': f'Syllabus generation failed: {str(e)}', 'complete': True})}\n\n"
-
-    return Response(generate(), mimetype="text/event-stream", headers={
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-        "X-Accel-Buffering": "no"
-    })
-
-@app.route("/api/generate-chapter/<int:chapter_id>", methods=["POST"])
-def generate_chapter(chapter_id):
-    try:
-        print(f"\n🚀 [GENERATE-CHAPTER] Starting for chapter {chapter_id}")
-        
-        # Check if chapter is already cached in Firestore
-        ch_doc = db.collection('chapters').document(str(chapter_id)).get()
-        if ch_doc.exists:
-            print(f"✓ [GENERATE-CHAPTER] Chapter {chapter_id} already cached in Firestore")
-            return jsonify({"status": "cached", "message": "Chapter already generated"})
-        
-        syllabus = session.get("ai_data", {}).get("syllabus")
-        if not syllabus:
-            return jsonify({"error": "Syllabus not found"}), 400
-        
-        target_chapter = None
-        for ch in syllabus.get("chapters", []):
-            if int(ch["id"]) == chapter_id:
-                target_chapter = ch
-                break
-        
-        if not target_chapter:
-            return jsonify({"error": f"Chapter {chapter_id} not found in syllabus"}), 404
-        
-        cognitive_style = session.get("cognitive_style", "focus")
-        gender = session.get("gender", "female")
-        emotion = session.get("emotion", "okay")
-        learning_profile = session.get("learning_profile", {})
-        raw_text = session.get("raw_content", "")
-        
-        game_types = ["true_false_blitz", "concept_connect", "sequence_sort", "label_match"]
-        subject_domain = syllabus.get("subject_domain", "").lower()
-        if any(w in subject_domain for w in ["coding", "programming", "computer", "development", "software"]):
-            game_types.append("code_drop")
-            
-        chapter_index = 0
-        for i, ch in enumerate(syllabus.get("chapters", [])):
-            if int(ch["id"]) == int(chapter_id):
-                chapter_index = i
-                break
-                
-        assigned_game = game_types[chapter_index % len(game_types)]
-        
-        preferred_language = session.get("preferred_language", "en")
-        full_chapter = process_chapter(target_chapter, cognitive_style, gender, emotion, learning_profile, raw_text, assigned_game, preferred_language=preferred_language)
-        
-        full_chapter["audio_url"] = "placeholder.mp3"
-        full_chapter["chapter_id"] = str(chapter_id)
-        full_chapter["title"] = target_chapter.get("title", "Chapter")
-        full_chapter["subject_domain"] = syllabus.get("subject_domain", "General")
-        full_chapter["topic_title"] = syllabus.get("topic_title", "Learning Module")
-        
-        # Save to Firestore
-        print(f"🔥 [FIRESTORE] Saving chapter {chapter_id}...")
-        db.collection('chapters').document(str(chapter_id)).set({
-            'topic_id': 'current',
-            'data_json': json.dumps(full_chapter)
-        })
-        print(f"✓ [GENERATE-CHAPTER] Saved to Firestore successfully")
-        
-        if "ai_data" not in session:
-            session["ai_data"] = {}
-        if "chapters_generated" not in session["ai_data"]:
-            session["ai_data"]["chapters_generated"] = {}
-        session["ai_data"]["chapters_generated"][str(chapter_id)] = True
-        session.modified = True
-        _save_topic_progress()
-        
-        return jsonify({
-            "status": "success",
-            "message": f"Chapter {chapter_id} generated successfully",
-            "audio_ready": True
-        })
-    
-    except Exception as e:
-        print(f"✗ [GENERATE-CHAPTER] Chapter Generation Error: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/chapters")
-def chapters():
-    print("DEBUG: /chapters called")
-    print(f"DEBUG: session keys: {list(session.keys())}")
-    print(f"DEBUG: ai_data present: {bool(session.get('ai_data'))}")
-    
-    
-    if not session.get("ai_data"):
-        print("DEBUG: ai_data not in session, redirecting to index")
-        return redirect(url_for("index"))
-    
-    syllabus = session.get("ai_data", {}).get("syllabus")
-    if not syllabus:
-        print("DEBUG: syllabus not in ai_data, redirecting to index")
-        return redirect(url_for("index"))
-    
-    # Ensure chapter_progress exists
-    if "chapter_progress" not in session:
-        session["chapter_progress"] = {}
-    
-    print(f"DEBUG: /chapters rendering with {len(syllabus.get('chapters', []))} chapters")
-    
-    return render_template("chapters.html", 
-                           syllabus=syllabus,
-                           progress=session.get("chapter_progress", {}),
-                           total_xp=session.get("total_xp", 0))
-
-@app.route("/learn/<int:chapter_id>")
-def learn(chapter_id):
-    """
-    Display learning content for a chapter.
-    Chapter should already be generated by /api/generate-chapter.
-    """
-    doc = db.collection('chapters').document(str(chapter_id)).get()
-    if not doc.exists:
-        print(f"⚠️ Chapter {chapter_id} not found in Firestore, redirecting to chapters")
-        return redirect(url_for("chapters"))
-    
-    try:
-        data = doc.to_dict()
-        chapter = json.loads(data.get("data_json", "{}"))
-    except Exception as e:
-        print(f"⚠️ Failed to parse chapter {chapter_id} JSON: {str(e)}")
-        return redirect(url_for("chapters"))
-    
-    # Ensure chapter has all required fields
-    chapter.setdefault("chapter_id", chapter_id)
-    chapter.setdefault("subject_domain", "General")
-    chapter.setdefault("title", "Chapter")
-    chapter.setdefault("narration_script", "No narration provided.")
-    chapter.setdefault("topic_title", "Learning Module")
-    chapter.setdefault("key_concepts", [])
-    
-    return render_template("learn.html", 
-                           chapter=chapter,
-                           style=session.get("cognitive_style", "focus"),
-                           user_voice=session.get("gender", "standard_female"),
-                           topic_id=session.get("active_topic_id", 0),
-                           preferred_language=session.get("preferred_language", "en"))
-
-@app.route("/api/debug-chapter/<int:chapter_id>")
-def debug_chapter(chapter_id):
-    """Debug endpoint to see what's in the database and what files exist"""
-    import os
-    
-    print(f"\n🔍 [DEBUG] Checking chapter {chapter_id}...")
-    
-    # Check database
-    doc = db.collection('chapters').document(str(chapter_id)).get()
-    if not doc.exists:
-        return jsonify({"error": "Chapter not in database"}), 404
-    
-    chapter = json.loads(doc.to_dict().get("data_json", "{}"))
-    audio_url = chapter.get("audio_url")
-    
-    print(f"✓ Found in database")
-    print(f"  - audio_url field: {audio_url}")
-    print(f"  - narration_script length: {len(chapter.get('narration_script', ''))}")
-    
-    # Check files
-    audio_dir = "static/audio"
-    if os.path.exists(audio_dir):
-        files = os.listdir(audio_dir)
-        print(f"✓ Audio directory exists with {len(files)} files:")
-        for f in files[:5]:  # Show first 5
-            size = os.path.getsize(os.path.join(audio_dir, f))
-            print(f"    - {f} ({size} bytes)")
-    else:
-        print(f"✗ Audio directory doesn't exist")
-    
-    # Check if audio file exists
-    return jsonify({
-        "chapter_id": chapter_id,
-        "narration_length": len(chapter.get('narration_script', ''))
-    })
+# --- TTS ---
 
 @app.route("/api/tts/speak", methods=["POST"])
 def tts_speak():
-    """Stream TTS audio for arbitrary text — used by Story Mode Read Aloud."""
+    """Stream TTS audio for any text."""
     try:
         data = request.get_json(force=True)
         text = (data.get("text") or "").strip()
         lang = data.get("lang", session.get("preferred_language", "en"))
-        voice_key = data.get("voice", session.get("voice", "standard_female"))
+        voice_key = data.get("voice", "standard_female")
 
         if not text:
-            return jsonify({"error": "No text provided"}), 400
+            return jsonify({"error": "No text"}), 400
 
-        # Resolve the correct neural voice for the language
         lang_voice = get_voice_for_language(lang, voice_key)
         voice = lang_voice if lang_voice else "en-US-AriaNeural"
 
-        print(f"🔊 [TTS-SPEAK] lang={lang}, voice={voice}, chars={len(text)}")
-        audio_stream = generate_chapter_audio_stream(text, voice_id=voice)
+        print(f"[TTS] lang={lang}, voice={voice}, chars={len(text)}")
+        audio_stream = generate_chapter_audio_stream(text, voice_id=voice, target_lang=lang)
         return Response(stream_with_context(audio_stream), mimetype="audio/mpeg", direct_passthrough=True)
 
     except Exception as e:
-        print(f"✗ [TTS-SPEAK] Error: {str(e)}")
+        print(f"✗ [TTS] Error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/audio/stream/<int:chapter_id>")
-def stream_audio(chapter_id):
-    """Generates audio dynamically on the fly without saving"""
-    print(f"\n🔊 [STREAM-AUDIO] Request for chapter {chapter_id}")
+# --- HELPER: Get linked patient data ---
+
+def get_linked_patient_data(linked_patient_id):
+    """Get patient profile, game results, location, and photos from Firestore."""
+    profile = {}
+    game_results = []
+    last_location = {}
+    patient_name = "Patient"
+    family_photos = []
+    patient_code = ""
     
-    voice = request.args.get('voice', 'standard_female')
-    
-    doc = db.collection('chapters').document(str(chapter_id)).get()
-    if not doc.exists:
-        return jsonify({"error": "Chapter not found"}), 404
+    if linked_patient_id:
+        try:
+            patient_doc = db.collection('users').document(str(linked_patient_id)).get()
+            if patient_doc.exists:
+                patient_data = patient_doc.to_dict()
+                patient_name = patient_data.get('patient_name', patient_data.get('name', 'Patient'))
+                patient_code = patient_data.get('patient_code', '')
+                if patient_data.get('patient_profile_json'):
+                    profile = json.loads(patient_data['patient_profile_json'])
+        except Exception as e:
+            print(f"⚠️ [LINK] Error loading patient: {e}")
         
+        try:
+            docs = db.collection('game_results').where('user_id', '==', linked_patient_id).get()
+            game_results = [d.to_dict() for d in docs]
+        except:
+            pass
+        
+        try:
+            loc_doc = db.collection('locations').document(str(linked_patient_id)).get()
+            if loc_doc.exists:
+                loc_data = loc_doc.to_dict()
+                last_location = {
+                    'lat': loc_data.get('latitude'),
+                    'lng': loc_data.get('longitude'),
+                    'url': loc_data.get('url'),
+                    'timestamp': loc_data.get('timestamp'),
+                    'address': f"Lat: {round(loc_data.get('latitude', 0), 4)}, Lng: {round(loc_data.get('longitude', 0), 4)}"
+                }
+        except:
+            pass
+        
+        try:
+            photo_docs = db.collection('family_photos').where('patient_id', '==', linked_patient_id).get()
+            family_photos = [d.to_dict() | {'doc_id': d.id} for d in photo_docs]
+        except:
+            pass
+    
+    return {
+        'profile': profile,
+        'patient_name': patient_name,
+        'patient_code': patient_code,
+        'game_results': game_results,
+        'last_location': last_location,
+        'family_photos': family_photos,
+        'assigned_doctor_name': patient_data.get('assigned_doctor_name', '') if patient_doc and patient_doc.exists else '',
+        'assigned_doctor_email': patient_data.get('assigned_doctor_email', '') if patient_doc and patient_doc.exists else '',
+        'assigned_doctor_id': patient_data.get('assigned_doctor_id', '') if patient_doc and patient_doc.exists else ''
+    }
+
+
+# --- CAREGIVER DASHBOARD ---
+
+@app.route("/caregiver-dashboard")
+@login_required
+def caregiver_dashboard():
+    user_id = session["user_id"]
+    role = session.get("role", "patient")
+    
+    if role not in ("caregiver", "doctor"):
+        return redirect(url_for("dashboard"))
+    
+    # Auto-sync user to Firebase
     try:
-        data = doc.to_dict()
-        chapter = json.loads(data.get("data_json", "{}"))
-        text = chapter.get('narration_script', '')
-        if not text:
-            return jsonify({"error": "No text"}), 400
-            
-        rate = chapter.get("tts_rate", "+0%")
-        pitch = chapter.get("tts_pitch", "+0Hz")
-        
-        # Multilingual voice override
-        preferred_language = session.get("preferred_language", "en")
-        lang_voice = get_voice_for_language(preferred_language, voice)
-        if lang_voice:
-            voice = lang_voice  # Override with regional voice
-            print(f"🌐 [STREAM-AUDIO] Using multilingual voice: {voice} for language: {preferred_language}")
-        
-        # Stream audio via True Chunked Generator (0 latency!)
-        audio_stream = generate_chapter_audio_stream(text, voice_id=voice, rate=rate, pitch=pitch)
-        return Response(stream_with_context(audio_stream), mimetype="audio/mpeg", direct_passthrough=True)
-        
+        cg_doc = db.collection('users').document(str(user_id)).get()
+        if not cg_doc.exists:
+            db.collection('users').document(str(user_id)).set({
+                'name': session.get('name', 'Caregiver'),
+                'email': session.get('email', ''),
+                'role': role,
+                'linked_patient_id': session.get('linked_patient_id', ''),
+                'created_at': time.time()
+            })
     except Exception as e:
-        print(f"✗ [STREAM-AUDIO] Failed: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        print(f"⚠️ [SYNC] Caregiver sync error: {e}")
+
+    linked_patient_id = session.get("linked_patient_id")
+    assigned_doctor_name = ""
+    assigned_doctor_email = ""
+    
+    if linked_patient_id:
+        patient_data = get_linked_patient_data(linked_patient_id)
+        profile = patient_data['profile']
+        patient_name = patient_data['patient_name']
+        game_results = patient_data['game_results']
+        last_location = patient_data['last_location']
+        family_photos = patient_data['family_photos']
+        assigned_doctor_name = patient_data.get('assigned_doctor_name', '')
+        assigned_doctor_email = patient_data.get('assigned_doctor_email', '')
+    else:
+        # Caregiver not linked yet
+        profile = session.get("patient_profile", {})
+        patient_name = profile.get("patient_name", session.get("name", "Patient"))
+        game_results = []
+        last_location = {}
+        family_photos = []
+    
+    # Calculate domain scores
+    domain_scores = calculate_domain_scores(game_results)
+    overall_score = calculate_overall_score(domain_scores)
+    
+    # Get alerts
+    alerts = check_for_alerts(domain_scores, None)
+    
+    # Stats
+    total_games = len(game_results)
+    total_xp = sum(g.get("xp", 0) for g in game_results)
+    avg_accuracy = round(sum(g.get("accuracy", 0) for g in game_results) / max(1, total_games))
+    streak = 0
+    
+    return render_template("caregiver_dashboard.html",
+                           patient_name=patient_name,
+                           profile=profile,
+                           domain_scores=domain_scores,
+                           overall_score=overall_score,
+                           alerts=alerts,
+                           total_games=total_games,
+                           total_xp=total_xp,
+                           avg_accuracy=avg_accuracy,
+                           streak=streak,
+                           game_results=game_results[-20:],
+                           last_location=last_location,
+                           family_photos=family_photos,
+                           linked_patient_id=linked_patient_id,
+                           assigned_doctor_name=assigned_doctor_name,
+                           assigned_doctor_email=assigned_doctor_email,
+                           role=role)
+
+
+# --- DOCTOR DASHBOARD ---
+
+@app.route("/doctor-dashboard")
+@login_required
+def doctor_dashboard():
+    role = session.get("role", "patient")
+    linked_patient_id = session.get("linked_patient_id")
+    
+    # Auto-resolve assigned patient from DB if not yet in session
+    if not linked_patient_id:
+        try:
+            doc_user = db.collection('users').document(str(session["user_id"])).get()
+            if doc_user.exists and doc_user.to_dict().get("linked_patient_id"):
+                linked_patient_id = doc_user.to_dict()["linked_patient_id"]
+                session["linked_patient_id"] = linked_patient_id
+                session.modified = True
+            else:
+                assigned_patients = db.collection('users').where('assigned_doctor_id', '==', str(session["user_id"])).limit(1).get()
+                if assigned_patients:
+                    linked_patient_id = assigned_patients[0].id
+                    session["linked_patient_id"] = linked_patient_id
+                    session.modified = True
+        except Exception as e:
+            print(f"[DOCTOR] Auto-resolve error: {e}")
+    
+    if linked_patient_id:
+        patient_data = get_linked_patient_data(linked_patient_id)
+        profile = patient_data['profile']
+        patient_name = patient_data['patient_name']
+        game_results = patient_data['game_results']
+        last_location = patient_data['last_location']
+    else:
+        profile = {}
+        patient_name = "No Patient Linked"
+        game_results = []
+        last_location = {}
+    
+    domain_scores = calculate_domain_scores(game_results)
+    overall_score = calculate_overall_score(domain_scores)
+    alerts = check_for_alerts(domain_scores, None)
+    
+    total_games = len(game_results)
+    avg_accuracy = round(sum(g.get("accuracy", 0) for g in game_results) / max(1, total_games))
+    
+    return render_template("doctor_dashboard.html",
+                           patient_name=patient_name,
+                           profile=profile,
+                           domain_scores=domain_scores,
+                           overall_score=overall_score,
+                           alerts=alerts,
+                           total_games=total_games,
+                           avg_accuracy=avg_accuracy,
+                           game_results=game_results[-20:],
+                           last_location=last_location,
+                           linked_patient_id=linked_patient_id,
+                           role=role)
+
+
+# --- FAMILY PHOTO MANAGEMENT ---
+
+@app.route("/api/upload-family-photo", methods=["POST"])
+@login_required
+def api_upload_family_photo():
+    """Caregiver uploads a family photo with name and relationship."""
+    person_name = request.form.get("person_name", "").strip()
+    relationship = request.form.get("relationship", "").strip()
+    
+    if not person_name:
+        return jsonify({"error": "Person name is required"}), 400
+    
+    file = request.files.get("photo")
+    if not file or not allowed_file(file.filename):
+        return jsonify({"error": "Please upload a valid image (PNG, JPG, GIF, WEBP)"}), 400
+    
+    linked_patient_id = session.get("linked_patient_id")
+    if not linked_patient_id:
+        return jsonify({"error": "No patient linked"}), 400
+    
+    # Upload to Cloudinary if configured, else save locally
+    filename = f"{uuid.uuid4().hex[:8]}_{secure_filename(file.filename)}"
+    cloud_url = upload_image(file, filename, folder=f"neurolearn/{linked_patient_id}")
+    
+    if cloud_url:
+        photo_url = cloud_url
+    else:
+        patient_dir = os.path.join(UPLOAD_FOLDER, str(linked_patient_id))
+        os.makedirs(patient_dir, exist_ok=True)
+        filepath = os.path.join(patient_dir, filename)
+        file.save(filepath)
+        photo_url = f"/static/uploads/{linked_patient_id}/{filename}"
+    
+    # Save metadata to Firestore
+    db.collection('family_photos').add({
+        'patient_id': linked_patient_id,
+        'uploaded_by': session["user_id"],
+        'person_name': person_name,
+        'relationship': relationship,
+        'photo_url': photo_url,
+        'filename': filename,
+        'uploaded_at': time.time()
+    })
+    
+    print(f"📸 [PHOTO] Uploaded: {person_name} ({relationship}) for patient {linked_patient_id}")
+    return jsonify({"success": True, "photo_url": photo_url, "person_name": person_name})
+
+
+@app.route("/api/delete-family-photo", methods=["POST"])
+@login_required
+def api_delete_family_photo():
+    """Delete a family photo."""
+    doc_id = request.json.get("doc_id")
+    if doc_id:
+        try:
+            photo_doc = db.collection('family_photos').document(doc_id).get()
+            if photo_doc.exists:
+                photo_data = photo_doc.to_dict()
+                # Delete file
+                filepath = os.path.join(app.root_path, photo_data.get('photo_url', '').lstrip('/'))
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+                # Delete Firestore doc
+                db.collection('family_photos').document(doc_id).delete()
+                return jsonify({"success": True})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+    return jsonify({"error": "Missing doc_id"}), 400
+
+
+@app.route("/api/family-photos")
+@login_required
+def api_family_photos():
+    """Get all family photos for a patient."""
+    linked_patient_id = session.get("linked_patient_id", session.get("user_id"))
+    photos = []
+    try:
+        docs = db.collection('family_photos').where('patient_id', '==', linked_patient_id).get()
+        photos = [d.to_dict() | {'doc_id': d.id} for d in docs]
+    except:
+        pass
+    return jsonify({"photos": photos})
+
+
+@app.route("/api/patient-pin")
+@login_required
+def api_patient_pin():
+    """Return the linked patient's PIN for caregiver dashboard display."""
+    if session.get("role") not in ("caregiver", "doctor"):
+        return jsonify({"error": "Forbidden"}), 403
+    linked_patient_id = session.get("linked_patient_id")
+    if not linked_patient_id:
+        return jsonify({"error": "No patient linked"}), 404
+    try:
+        p_doc = db.collection('users').document(str(linked_patient_id)).get()
+        if p_doc.exists:
+            pin = p_doc.to_dict().get('pin', '')
+            return jsonify({"success": True, "pin": pin})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({"error": "Patient not found"}), 404
+
+
+@app.route("/api/doctors")
+@login_required
+def api_doctors():
+    """List all registered doctors for caregiver to pick from."""
+    if session.get("role") not in ("caregiver", "doctor"):
+        return jsonify({"error": "Forbidden"}), 403
+    try:
+        docs = db.collection('users').where('role', '==', 'doctor').get()
+        doctors = []
+        for d in docs:
+            doc_data = d.to_dict()
+            doctors.append({
+                "id": d.id,
+                "name": doc_data.get("name", "Dr. Unknown"),
+                "email": doc_data.get("email", ""),
+                "specialization": doc_data.get("specialization", ""),
+                "hospital": doc_data.get("hospital", "")
+            })
+        return jsonify({"success": True, "doctors": doctors})
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/game/<int:chapter_id>")
-def game(chapter_id):
-    print(f"\n[GAME] Loading game for chapter {chapter_id}")
-    doc = db.collection('chapters').document(str(chapter_id)).get()
-    if not doc.exists:
-        print(f"[GAME] Chapter {chapter_id} not found")
-        return redirect(url_for("chapters"))
-    
+
+@app.route("/api/assign-doctor", methods=["POST"])
+@login_required
+def api_assign_doctor():
+    """Caregiver assigns a doctor to the linked patient."""
+    if session.get("role") not in ("caregiver", "doctor"):
+        return jsonify({"error": "Only caregivers can assign doctors"}), 403
+
+    data = request.json or {}
+    doctor_id = data.get("doctor_id", "").strip()
+    if not doctor_id:
+        return jsonify({"error": "doctor_id is required"}), 400
+
+    linked_patient_id = session.get("linked_patient_id")
+    if not linked_patient_id:
+        return jsonify({"error": "No patient linked to this caregiver"}), 400
+
+    # Get doctor details
     try:
-        data = doc.to_dict()
-        chapter = json.loads(data.get("data_json", "{}"))
+        doc_doc = db.collection('users').document(doctor_id).get()
+        if not doc_doc.exists or doc_doc.to_dict().get("role") != "doctor":
+            return jsonify({"error": "Doctor not found"}), 404
+        doctor_data = doc_doc.to_dict()
+        doctor_name = doctor_data.get("name", "Doctor")
+        doctor_email = doctor_data.get("email", "")
     except Exception as e:
-        print(f"✗ [GAME] Failed to parse chapter: {str(e)}")
-        return redirect(url_for("chapters"))
-    
-    # Ensure required fields
-    if "chapter_id" not in chapter:
-        chapter["chapter_id"] = chapter_id
-    
-    if "game_items" not in chapter or not chapter["game_items"]:
-        print(f"[GAME] No game_items for chapter {chapter_id}, using empty array")
-        chapter["game_items"] = []
-    else:
-        print(f"[GAME] Found {len(chapter.get('game_items', []))} game items")
-    
-    if "game_type" not in chapter:
-        chapter["game_type"] = "true_false_blitz"
-    if "game_title" not in chapter:
-        chapter["game_title"] = "Knowledge Challenge"
-    if "game_instruction" not in chapter:
-        chapter["game_instruction"] = "Analyze and execute the task below."
-    if "xp_reward" not in chapter:
-        chapter["xp_reward"] = 250
-    
-    print(f"   - Game Type: {chapter.get('game_type')}")
-    print(f"   - XP Reward: {chapter.get('xp_reward')}")
-    print(f"   - Game Items: {len(chapter.get('game_items', []))}")
-    
-    return render_template("game.html", chapter=chapter)
+        return jsonify({"error": str(e)}), 500
 
-@app.route("/api/game-data/<int:chapter_id>")
-def game_data(chapter_id):
-    doc = db.collection('chapters').document(str(chapter_id)).get()
-    if not doc.exists: return jsonify({"error": "No data"}), 404
-    
-    data = doc.to_dict()
-    chapter = json.loads(data.get("data_json", "{}"))
-    return jsonify({
-        "game_type": chapter.get("game_type"),
-        "game_title": chapter.get("game_title"),
-        "game_instruction": chapter.get("game_instruction"),
-        "game_items": chapter.get("game_items", []),
-        "xp_reward": chapter.get("xp_reward", 250)
-    })
-
-@app.route("/api/game-complete", methods=["POST"])
-def game_complete():
-    data = request.json
-    c_id = str(data.get("chapter_id"))
-    score = data.get("score", 0)
-    
-    # Ensure chapter_progress exists
-    if "chapter_progress" not in session:
-        session["chapter_progress"] = {}
-    if c_id not in session["chapter_progress"]:
-        session["chapter_progress"][c_id] = {"completed": False}
-    
-    session["chapter_progress"][c_id]["game_score"] = score
-    session.modified = True
-    
-    return jsonify({"status": "saved", "chapter_id": c_id, "score": score})
-
-@app.route("/quiz/<int:chapter_id>")
-def quiz(chapter_id):
-    print(f"\n📝 [QUIZ] Loading quiz for chapter {chapter_id}")
-    doc = db.collection('chapters').document(str(chapter_id)).get()
-    if not doc.exists:
-        print(f"✗ [QUIZ] Chapter {chapter_id} not found")
-        return redirect(url_for("chapters"))
-    
+    # Link doctor to patient (on patient doc)
     try:
-        data = doc.to_dict()
-        chapter = json.loads(data.get("data_json", "{}"))
-    except Exception as e:
-        print(f"✗ [QUIZ] Failed to parse chapter: {str(e)}")
-        return redirect(url_for("chapters"))
-    
-    # Ensure required fields
-    if "chapter_id" not in chapter:
-        chapter["chapter_id"] = chapter_id
-    if "quiz_questions" not in chapter or not chapter["quiz_questions"]:
-        print(f"⚠️ [QUIZ] No quiz_questions for chapter {chapter_id}, using empty array")
-        chapter["quiz_questions"] = []
-    else:
-        print(f"✓ [QUIZ] Found {len(chapter.get('quiz_questions', []))} quiz questions")
-        # Log first question for debugging
-        first_q = chapter["quiz_questions"][0]
-        print(f"   - First Q: {first_q.get('question', 'N/A')[:50]}")
-        print(f"   - Has difficulty: {'difficulty' in first_q}")
-    
-    if "key_concepts" not in chapter:
-        chapter["key_concepts"] = []
-    if "improvement_tip" not in chapter:
-        chapter["improvement_tip"] = "Keep practicing to master this topic!"
-    if "xp_reward" not in chapter:
-        chapter["xp_reward"] = 250
-    
-    return render_template("quiz.html", chapter=chapter)
-
-@app.route("/api/quiz-data/<int:chapter_id>")
-def quiz_data(chapter_id):
-    print(f"📝 [API-QUIZ-DATA] Request for chapter {chapter_id}")
-    doc = db.collection('chapters').document(str(chapter_id)).get()
-    if not doc.exists:
-        print(f"✗ [API-QUIZ-DATA] Chapter not found")
-        return jsonify({"error": "No data"}), 404
-    
-    try:
-        data = doc.to_dict()
-        chapter = json.loads(data.get("data_json", "{}"))
-    except Exception as e:
-        print(f"✗ [API-QUIZ-DATA] Failed to parse chapter: {str(e)}")
-        return jsonify({"error": "Parse error"}), 500
-    
-    questions = chapter.get("quiz_questions", [])
-    print(f"✓ [API-QUIZ-DATA] Returning {len(questions)} questions")
-    
-    # Validate questions have required fields
-    for q in questions:
-        q.setdefault("difficulty", "medium")
-        q.setdefault("concept_tag", "Concept")
-    
-    return jsonify({"questions": questions})
-
-@app.route("/api/submit-quiz", methods=["POST"])
-def submit_quiz():
-    data = request.json
-    c_id = str(data.get("chapter_id"))
-    score = data.get("score", 0)
-    xp_earned = data.get("xp_earned", 0)
-    
-    print(f"\n🎯 [SUBMIT-QUIZ] Chapter {c_id} submitted")
-    print(f"   - Quiz score: {score}%")
-    print(f"   - XP earned (from quiz): {xp_earned}")
-    
-    # Ensure chapter_progress exists
-    if "chapter_progress" not in session:
-        session["chapter_progress"] = {}
-    if c_id not in session["chapter_progress"]:
-        session["chapter_progress"][c_id] = {}
-    
-    # Calculate XP reward based on score (bonus system)
-    base_xp = 250
-    if score >= 90:
-        bonus_xp = base_xp + 100  # 350 XP for mastery
-        achievement = "Master 🏆"
-    elif score >= 70:
-        bonus_xp = base_xp + 50   # 300 XP for good performance
-        achievement = "Good 👍"
-    elif score >= 50:
-        bonus_xp = base_xp        # 250 XP for passing
-        achievement = "Passed ✓"
-    else:
-        bonus_xp = max(50, int(base_xp * (score / 100)))  # Scaled down for low scores
-        achievement = "Learning 📚"
-    
-    print(f"   - Final XP reward: {bonus_xp} ({achievement})")
-    
-    session["chapter_progress"][c_id].update({
-        "quiz_score": score,
-        "xp_earned": bonus_xp,
-        "completed": True
-    })
-    
-    total_before = session.get("total_xp", 0)
-    session["total_xp"] = total_before + bonus_xp
-    session.modified = True
-    
-    # Persist progress to database for logged-in users
-    _save_topic_progress()
-    
-    print(f"   ✓ Total XP: {total_before} → {session['total_xp']}")
-    print(f"✓ [SUBMIT-QUIZ] Chapter {c_id} marked as completed\n")
-    
-    return jsonify({
-        "status": "success", 
-        "redirect": url_for("game", chapter_id=c_id),
-        "score": score,
-        "xp_earned": bonus_xp,
-        "achievement": achievement
-    })
-
-@app.route("/results/<int:chapter_id>")
-def results(chapter_id):
-    doc = db.collection('chapters').document(str(chapter_id)).get()
-    if not doc.exists: return redirect(url_for("chapters"))
-    
-    chapter = json.loads(doc.to_dict().get("data_json", "{}"))
-    progress = session.get("chapter_progress", {}).get(str(chapter_id), {})
-    
-    # Ensure required fields
-    if "chapter_id" not in chapter:
-        chapter["chapter_id"] = chapter_id
-    if "badge_emoji" not in chapter:
-        chapter["badge_emoji"] = "🏆"
-    if "badge_name" not in chapter:
-        chapter["badge_name"] = "Learner"
-    if "topic_title" not in chapter:
-        # Try to get from syllabus
-        syllabus = session.get("ai_data", {}).get("syllabus", {})
-        chapter["topic_title"] = syllabus.get("topic_title", "Learning Module")
-    
-    return render_template("results.html", 
-                           chapter=chapter, 
-                           progress=progress,
-                           student_name=session.get("student_name", "Explorer"),
-                           topic_id=session.get("active_topic_id", 0))
-
-@app.route("/api/leaderboard", methods=["GET", "POST"])
-def leaderboard():
-    if request.method == "POST":
-        data = request.json
-        db.collection('leaderboard').add({
-            'name': data["name"],
-            'topic': data["topic"],
-            'score': data["score"],
-            'xp': data["xp"],
-            'badge': data["badge"],
-            'created_at': firestore.SERVER_TIMESTAMP
+        db.collection('users').document(str(linked_patient_id)).update({
+            'assigned_doctor_id': doctor_id,
+            'assigned_doctor_name': doctor_name,
+            'assigned_doctor_email': doctor_email
         })
-        return jsonify({"status": "success"})
-    
-    docs = db.collection('leaderboard').order_by('xp', direction=firestore.Query.DESCENDING).limit(10).get()
-    return jsonify([d.to_dict() for d in docs])
+    except Exception as e:
+        return jsonify({"error": f"Failed to update patient: {e}"}), 500
 
-@app.route("/parent-dashboard")
-def parent_dashboard():
-    if session.get("user_type") != "parent":
-        return redirect(url_for("index"))
+    # Link patient to doctor (on doctor doc)
+    try:
+        db.collection('users').document(doctor_id).update({
+            'linked_patient_id': linked_patient_id,
+            'linked_patient_name': session.get("patient_profile", {}).get("patient_name", "Patient")
+        })
+    except Exception as e:
+        print(f"⚠️ [ASSIGN-DOCTOR] Could not update doctor doc: {e}")
+
+    # Update patient profile with doctor email for SOS / reports
+    try:
+        p_doc = db.collection('users').document(str(linked_patient_id)).get()
+        if p_doc.exists:
+            p_data = p_doc.to_dict()
+            profile_json = p_data.get('patient_profile_json', '{}')
+            try:
+                profile = json.loads(profile_json)
+            except:
+                profile = {}
+            profile['doctor_name'] = doctor_name
+            profile['doctor_email'] = doctor_email
+            db.collection('users').document(str(linked_patient_id)).update({
+                'patient_profile_json': json.dumps(profile)
+            })
+    except Exception as e:
+        print(f"⚠️ [ASSIGN-DOCTOR] Profile update error: {e}")
+
+    print(f"🩺 [ASSIGN-DOCTOR] Doctor '{doctor_name}' assigned to patient (linked_patient_id={linked_patient_id})")
+    return jsonify({
+        "success": True,
+        "doctor_name": doctor_name,
+        "doctor_email": doctor_email,
+        "doctor_id": doctor_id
+    })
+
+
+# --- LINK PATIENT (for caregivers/doctors who didn't link at signup) ---
+
+@app.route("/api/link-patient", methods=["POST"])
+@login_required
+def api_link_patient():
+    """Link a caregiver or doctor to a patient via patient code."""
+    data = request.json
+    patient_code = data.get("patient_code", "").strip().upper()
     
-    # Fetch emotion analytics for this user's topics
-    emotion_data = []
-    user_id = session.get("user_id")
-    if user_id:
-        docs = db.collection('emotion_logs').where('user_id', '==', user_id).limit(200).get()
-        emotion_data = [d.to_dict() for d in docs]
+    if not patient_code:
+        return jsonify({"error": "Patient code is required"}), 400
     
-    # Compute emotion summary
-    emotion_summary = {"focused": 0, "bored": 0, "distracted": 0, "stressed": 0, "anxious": 0}
-    for e in emotion_data:
-        state = e.get("emotion_state", "focused")
-        if state in emotion_summary:
-            emotion_summary[state] += 1
-    total_readings = sum(emotion_summary.values()) or 1
-    emotion_percentages = {k: round(v / total_readings * 100) for k, v in emotion_summary.items()}
+    patient_docs = db.collection('users').where('patient_code', '==', patient_code).limit(1).get()
+    if len(patient_docs) == 0:
+        return jsonify({"error": f"Patient code '{patient_code}' not found"}), 404
     
-    # Disorder level indicators
-    disorder_levels = {
-        "anxiety_level": min(100, emotion_percentages.get("anxious", 0) + emotion_percentages.get("stressed", 0)),
-        "attention_score": max(0, 100 - emotion_percentages.get("distracted", 0) - emotion_percentages.get("bored", 0)),
-        "stress_level": emotion_percentages.get("stressed", 0),
-        "engagement_score": emotion_percentages.get("focused", 0)
+    patient_id = patient_docs[0].id
+    patient_data = patient_docs[0].to_dict()
+    
+    # Save link
+    session["linked_patient_id"] = patient_id
+    session.modified = True
+    
+    db.collection('users').document(str(session["user_id"])).update({
+        'linked_patient_id': patient_id
+    })
+    
+    print(f"🔗 [LINK] {session.get('name')} linked to patient {patient_data.get('name')} (code={patient_code})")
+    return jsonify({
+        "success": True,
+        "patient_name": patient_data.get('patient_name', patient_data.get('name', 'Patient')),
+        "patient_id": patient_id
+    })
+
+
+# --- COGNITIVE REPORT ---
+
+@app.route("/report")
+@login_required
+def cognitive_report():
+    profile = session.get("patient_profile", {})
+    patient_name = profile.get("patient_name", "Patient")
+    
+    game_results = []
+    try:
+        user_id = session["user_id"]
+        docs = db.collection('game_results').where('user_id', '==', user_id).get()
+        game_results = [d.to_dict() for d in docs]
+    except:
+        pass
+    
+    domain_scores = calculate_domain_scores(game_results)
+    overall_score = calculate_overall_score(domain_scores)
+    
+    total_games = len(game_results)
+    avg_accuracy = round(sum(g.get("accuracy", 0) for g in game_results) / max(1, total_games))
+    
+    return render_template("cognitive_report.html",
+                           patient_name=patient_name,
+                           profile=profile,
+                           domain_scores=domain_scores,
+                           overall_score=overall_score,
+                           total_games=total_games,
+                           avg_accuracy=avg_accuracy,
+                           game_results=game_results)
+
+
+@app.route("/api/email-report", methods=["POST"])
+@login_required
+def api_email_report():
+    """Email cognitive report to doctor."""
+    profile = session.get("patient_profile", {})
+    doctor_email = profile.get("doctor_email")
+    
+    if not doctor_email:
+        return jsonify({"error": "No doctor email configured"}), 400
+    
+    game_results = []
+    try:
+        user_id = session["user_id"]
+        docs = db.collection('game_results').where('user_id', '==', user_id).get()
+        game_results = [d.to_dict() for d in docs]
+    except:
+        pass
+    
+    domain_scores = calculate_domain_scores(game_results)
+    overall_score = calculate_overall_score(domain_scores)
+    
+    report_data = {
+        "domain_scores": domain_scores,
+        "overall_score": overall_score,
+        "period": time.strftime("%B %Y"),
+        "location": session.get("last_location", {}).get("address", "Not shared")
     }
     
-    return render_template("parent_dashboard.html", 
-                           student_name=session.get("student_name") or session.get("display_name") or "Learner",
-                           progress=session.get("chapter_progress") or {},
-                           profile=session.get("learning_profile") or {},
-                           syllabus=session.get("ai_data", {}).get("syllabus") or {},
-                           emotion_data=emotion_data,
-                           emotion_summary=emotion_summary,
-                           emotion_percentages=emotion_percentages,
-                           disorder_levels=disorder_levels)
+    success = send_doctor_report(
+        profile.get("patient_name", "Patient"),
+        doctor_email,
+        report_data
+    )
+    
+    return jsonify({"success": success})
 
 
-# --- EMOTION & ADAPTIVE MODE ENDPOINTS ---
+# --- SOS & LOCATION ---
 
-@app.route("/api/emotion-log", methods=["POST"])
-def emotion_log():
-    """Record an emotion reading from the webcam detector."""
-    try:
-        data = request.json
-        user_id = session.get("user_id")
-        topic_id = session.get("active_topic_id")
-        
-        emotion_state = data.get("emotion_state", "unknown")
-        confidence = data.get("confidence", 0)
-        chapter_id = data.get("chapter_id")
-        
-        if user_id:
-            db.collection('emotion_logs').add({
-                'user_id': user_id,
-                'topic_id': topic_id,
-                'chapter_id': chapter_id,
-                'emotion_state': emotion_state,
-                'confidence': confidence,
-                'timestamp': firestore.SERVER_TIMESTAMP
-            })
-        
-        return jsonify({"status": "logged", "state": emotion_state})
-    except Exception as e:
-        print(f"⚠️ [EMOTION-LOG] Error: {str(e)}")
-        return jsonify({"status": "error"}), 500
-
-
-@app.route("/api/emotion-analytics/<topic_id>")
+@app.route("/api/sos-alert", methods=["POST"])
 @login_required
-def emotion_analytics(topic_id):
-    """Get emotion analytics for a specific topic (for parent dashboard)."""
-    try:
-        user_id = session.get("user_id")
-        
-        docs = db.collection('emotion_logs').where('user_id', '==', user_id).where('topic_id', '==', topic_id).get()
-        data = [d.to_dict() for d in docs]
-        
-        # Compute summary
-        summary = {}
-        for row in data:
-            state = row.get("emotion_state", "unknown")
-            summary[state] = summary.get(state, 0) + 1
-        
-        return jsonify({"readings": data, "summary": summary, "total": len(data)})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/api/generate-story", methods=["POST"])
-def api_generate_story():
-    """Generate manga-style story panels for Story Mode."""
+def api_sos_alert():
+    """Emergency SOS — email caregiver + doctor + share location."""
     try:
         data = request.json
-        chapter_id = data.get("chapter_id")
+        latitude = data.get("latitude")
+        longitude = data.get("longitude")
         
-        if not chapter_id:
-            return jsonify({"error": "No chapter_id provided"}), 400
+        location_url = None
+        if latitude and longitude:
+            location_url = f"https://www.google.com/maps?q={latitude},{longitude}"
+            session["last_location"] = {
+                "lat": latitude,
+                "lng": longitude,
+                "url": location_url,
+                "timestamp": time.time(),
+                "address": f"Lat: {latitude}, Lng: {longitude}"
+            }
+            session.modified = True
         
-        doc_ref = db.collection('chapters').document(str(chapter_id))
-        doc = doc_ref.get()
-        if not doc.exists:
-            return jsonify({"error": "Chapter not found"}), 404
-        
-        chapter = json.loads(doc.to_dict().get("data_json", "{}"))
-        
-        # --- CACHE CHECK ---
-        if "story_data" in chapter and chapter["story_data"]:
-            print(f"📖 [STORY-API] Returning CACHED manga story for chapter {chapter_id}")
-            return jsonify(chapter["story_data"])
-            
-        narration = chapter.get("narration_script", "")
-        title = chapter.get("title", "Chapter")
-        key_concepts = chapter.get("key_concepts", [])
-        
-        print(f"📖 [STORY-API] Generating manga story for chapter {chapter_id}: {title}")
-        
-        # Generate story text via Groq
-        story_data = generate_manga_story(narration, title, key_concepts)
-        
-        # Generate manga images via Hugging Face
-        panels = story_data.get("panels", [])
-        panels = generate_manga_images_batch(panels)
-        story_data["panels"] = panels
-        
-        print(f"✓ [STORY-API] Story generated with {len(panels)} panels")
-        
-        # --- SAVE TO CACHE ---
-        chapter["story_data"] = story_data
-        doc_ref.update({'data_json': json.dumps(chapter)})
-        
-        return jsonify(story_data)
-        
-    except Exception as e:
-        print(f"✗ [STORY-API] Error: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        profile = session.get("patient_profile", {})
+        patient_name = profile.get("patient_name", session.get("name", "Patient"))
+        caregiver_email = profile.get("caregiver_email")
+        doctor_email = profile.get("doctor_email")
+        patient_id = session.get("user_id")
 
+        # Robust Caregiver Email Resolution Fix
+        if not caregiver_email and patient_id:
+            try:
+                p_doc = db.collection('users').document(str(patient_id)).get()
+                if p_doc.exists:
+                    p_data = p_doc.to_dict()
+                    # 1. Check linked caregiver id on patient doc
+                    cg_id = p_data.get("linked_caregiver_id")
+                    if cg_id:
+                        cg_doc = db.collection('users').document(str(cg_id)).get()
+                        if cg_doc.exists:
+                            caregiver_email = cg_doc.to_dict().get("email")
+                    # 2. Check invite record
+                    token = p_data.get("invite_token")
+                    if not caregiver_email and token:
+                        inv = db.collection('invites').document(token).get()
+                        if inv.exists:
+                            caregiver_email = inv.to_dict().get("caregiver_email")
+                
+                # 3. Check any caregiver who has linked this patient
+                if not caregiver_email:
+                    cg_query = db.collection('users').where('linked_patient_id', '==', str(patient_id)).get()
+                    if len(cg_query) > 0:
+                        caregiver_email = cg_query[0].to_dict().get("email")
+            except Exception as ex:
+                print(f"⚠️ [SOS] Error resolving caregiver email: {ex}")
 
-@app.route("/api/generate-simple", methods=["POST"])
-def api_generate_simple():
-    """Generate simplified content for Simple Mode."""
-    try:
-        data = request.json
-        chapter_id = data.get("chapter_id")
-        
-        if not chapter_id:
-            return jsonify({"error": "No chapter_id provided"}), 400
-        
-        doc_ref = db.collection('chapters').document(str(chapter_id))
-        doc = doc_ref.get()
-        if not doc.exists:
-            return jsonify({"error": "Chapter not found"}), 404
-        
-        chapter = json.loads(doc.to_dict().get("data_json", "{}"))
-        
-        # --- CACHE CHECK ---
-        if "simple_data" in chapter and chapter["simple_data"]:
-            print(f"📋 [SIMPLE-API] Returning CACHED simplified content for chapter {chapter_id}")
-            return jsonify(chapter["simple_data"])
-            
-        narration = chapter.get("narration_script", "")
-        title = chapter.get("title", "Chapter")
-        key_concepts = chapter.get("key_concepts", [])
-        
-        print(f"📋 [SIMPLE-API] Generating simplified content for chapter {chapter_id}: {title}")
-        
-        simple_data = generate_simplified_content(narration, title, key_concepts)
-        
-        print(f"✓ [SIMPLE-API] Simplified content generated with {len(simple_data.get('cards', []))} cards")
-        
-        # --- SAVE TO CACHE ---
-        chapter["simple_data"] = simple_data
-        doc_ref.update({'data_json': json.dumps(chapter)})
-        
-        return jsonify(simple_data)
-        
-    except Exception as e:
-        print(f"✗ [SIMPLE-API] Error: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
-
-
-# === FEATURE 1: SOCRATIC AI TUTOR ===
-
-@app.route("/api/ask-tutor", methods=["POST"])
-@login_required
-def ask_tutor():
-    """Socratic AI Tutor — answers questions strictly from chapter context."""
-    try:
-        data = request.json
-        question = data.get("question", "").strip()
-        chapter_id = data.get("chapter_id")
-        topic_id = data.get("topic_id")
-
-        if not question:
-            return jsonify({"success": False, "error": "No question provided"}), 400
-
-        # Retrieve chapter narration from DB
-        narration = ""
-        if chapter_id:
-            doc = db.collection('chapters').document(str(chapter_id)).get()
-            if doc.exists:
-                chapter_data = json.loads(doc.to_dict().get("data_json", "{}"))
-                narration = chapter_data.get("narration_script", "")
-
-        # Fallback: try session
-        if not narration:
-            chapters_gen = session.get("ai_data", {}).get("chapters_generated", {})
-            ch_data = chapters_gen.get(str(chapter_id), {})
-            if isinstance(ch_data, dict):
-                narration = ch_data.get("narration_script", "")
-
-        if not narration:
-            return jsonify({"success": False, "error": "Chapter content not found"}), 404
-
-        # Build Socratic system prompt
-        age_range = session.get("age_range", session.get("learning_profile", {}).get("age_range", "11-13"))
-        learning_profile = session.get("learning_profile", {})
-        profile_context = f"Student age range: {age_range}."
-        if learning_profile.get("has_dyslexia"):
-            profile_context += " Student has dyslexia — use simple words."
-        if learning_profile.get("has_anxiety"):
-            profile_context += " Student has anxiety — be extra reassuring."
-        if learning_profile.get("confidence_level") == "low":
-            profile_context += " Student has low confidence — be encouraging."
-
-        system_prompt = (
-            f"You are Socrates — a calm, encouraging tutor. Answer the student's question using ONLY the following lecture material. "
-            f"Do not introduce any knowledge outside this material. If the answer isn't in the material, say 'That's a great question for after this chapter!' "
-            f"Keep your answer to 2-4 sentences maximum, age-appropriate for the student. "
-            f"{profile_context}\n\nLecture:\n{narration[:3000]}"
-        )
-
-        user_prompt = f"Student's question: {question}"
-
-        # Call LLM — use Groq for fast response
-        import os
-        model = os.getenv("TUTOR_MODEL", "llama-3.3-70b-versatile")
-        answer = call_llm(system_prompt, user_prompt, model=model)
-
-        # Clean up the answer (remove any JSON formatting if present)
-        answer = answer.strip().strip('"').strip()
-
-        print(f"💬 [TUTOR] Q: {question[:50]}... A: {answer[:80]}...")
-        return jsonify({"success": True, "answer": answer})
-
-    except Exception as e:
-        print(f"✗ [TUTOR] Error: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
-# === FEATURE 3: LIVE COGNITIVE LOAD INTERVENTION ===
-
-@app.route("/api/emotion-intervention", methods=["POST"])
-@login_required
-def emotion_intervention():
-    """Trigger mid-lesson content simplification based on sustained emotional state."""
-    try:
-        data = request.json
-        state = data.get("state", "")
-        chapter_id = data.get("chapter_id")
-        topic_id = data.get("topic_id")
-        user_id = session.get("user_id")
-
-        # Log to emotion_logs regardless
-        if user_id and chapter_id:
-            db.collection('emotion_logs').add({
-                'user_id': user_id,
-                'topic_id': topic_id or session.get("active_topic_id"),
-                'chapter_id': chapter_id,
-                'emotion_state': state,
-                'confidence': 0.9,
-                'timestamp': firestore.SERVER_TIMESTAMP
-            })
-
-        # Only intervene for distress states
-        if state not in ['distressed', 'anxious', 'tired']:
-            return jsonify({"success": True, "intervention": False})
-
-        # Retrieve chapter data from DB
-        doc = db.collection('chapters').document(str(chapter_id)).get()
-        if not doc.exists:
-            return jsonify({"success": False, "error": "Chapter not found", "intervention": False}), 404
-
-        chapter_data = json.loads(doc.to_dict().get("data_json", "{}"))
-        learning_profile = session.get("learning_profile", {})
-
-        # Generate simplified content
-        narration = chapter_data.get("narration_script", "")
-        title = chapter_data.get("title", "Chapter")
-        key_concepts = chapter_data.get("key_concepts", [])
-
-        simplified = generate_simplified_content(narration, title, key_concepts)
-
-        # Build a simplified narration string from the cards
-        simplified_narration = ""
-        if simplified and simplified.get("cards"):
-            parts = []
-            for card in simplified["cards"]:
-                parts.append(f"{card.get('emoji', '')} {card.get('heading', '')}: {card.get('content', '')}")
-            simplified_narration = "\n\n".join(parts)
-            if simplified.get("encouragement"):
-                simplified_narration += f"\n\n{simplified['encouragement']}"
+        sent = False
+        if caregiver_email:
+            sent = send_sos_alert(patient_name, caregiver_email, doctor_email, location_url)
+            print(f"📧 [SOS] Email sent to caregiver: {caregiver_email}")
         else:
-            simplified_narration = narration[:1500]
-
-        # Determine comforting message based on state
-        messages = {
-            'distressed': "I noticed you might be feeling overwhelmed. Let me simplify things for you. 💚",
-            'anxious': "Take a deep breath. Let's make this content a bit easier to follow. 🌿",
-            'tired': "Feeling tired? Here's a gentler version of this section. Rest when you need to. 😊"
-        }
-        message = messages.get(state, "Let's take a moment and simplify things. 🌿")
-
-        print(f"🌿 [INTERVENTION] Triggered for state={state}, chapter={chapter_id}")
+            print(f"⚠️ [SOS] No caregiver email found for patient {patient_name}")
+        
+        # Log SOS event
+        db.collection('sos_logs').add({
+            'user_id': session.get("user_id"),
+            'patient_name': patient_name,
+            'location_url': location_url or "Not available",
+            'timestamp': time.time()
+        })
+        
+        print(f"🆘 [SOS] Alert triggered by {patient_name} | Location: {location_url}")
+        
         return jsonify({
             "success": True,
-            "intervention": True,
-            "simplified_narration": simplified_narration,
-            "message": message
+            "email_sent": sent,
+            "location_shared": bool(location_url),
+            "message": "Help is on the way! Your caregiver has been notified."
+        })
+    except Exception as e:
+        print(f"✗ [SOS] Error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/share-location", methods=["POST"])
+@login_required
+def api_share_location():
+    """Share patient's live location."""
+    data = request.json
+    latitude = data.get("latitude")
+    longitude = data.get("longitude")
+    
+    if latitude and longitude:
+        location_url = f"https://www.google.com/maps?q={latitude},{longitude}"
+        session["last_location"] = {
+            "lat": latitude,
+            "lng": longitude,
+            "url": location_url,
+            "timestamp": time.time(),
+            "address": f"Lat: {round(latitude, 4)}, Lng: {round(longitude, 4)}"
+        }
+        session.modified = True
+        
+        # Save to Firestore
+        db.collection('locations').document(str(session["user_id"])).set({
+            'latitude': latitude,
+            'longitude': longitude,
+            'url': location_url,
+            'timestamp': time.time()
+        })
+        
+        return jsonify({"success": True, "url": location_url})
+    
+    return jsonify({"error": "No location data"}), 400
+
+
+@app.route("/api/patient-live-location")
+@login_required
+def api_patient_live_location():
+    """Retrieve live location for caregiver or doctor dashboard map."""
+    linked_patient_id = session.get("linked_patient_id")
+    role = session.get("role", "patient")
+
+    # If caregiver/doctor and not in session, check DB
+    if not linked_patient_id and role in ("caregiver", "doctor"):
+        try:
+            u_doc = db.collection('users').document(str(session.get("user_id"))).get()
+            if u_doc.exists:
+                linked_patient_id = u_doc.to_dict().get("linked_patient_id")
+                if linked_patient_id:
+                    session["linked_patient_id"] = linked_patient_id
+                    session.modified = True
+        except Exception as e:
+            print(f"⚠️ [MAP] Lookup linked patient error: {e}")
+
+    target_id = linked_patient_id if linked_patient_id else session.get("user_id")
+
+    # 1. Try target patient doc
+    data = None
+    if target_id:
+        try:
+            loc_doc = db.collection('locations').document(str(target_id)).get()
+            if loc_doc.exists:
+                data = loc_doc.to_dict()
+        except Exception as e:
+            print(f"⚠️ [MAP] Error fetching target location: {e}")
+
+    # 2. If not found and user is caregiver/doctor, fallback to the latest active location in DB
+    if (not data or data.get("latitude") is None) and role in ("caregiver", "doctor"):
+        try:
+            all_locs = db.collection('locations').get()
+            if all_locs:
+                # Sort by timestamp descending
+                sorted_locs = sorted(all_locs, key=lambda d: d.to_dict().get('timestamp', 0), reverse=True)
+                if sorted_locs and sorted_locs[0].to_dict().get('latitude') is not None:
+                    data = sorted_locs[0].to_dict()
+        except Exception as e:
+            print(f"⚠️ [MAP] Fallback location query error: {e}")
+
+    # 3. Session fallback
+    if not data or data.get("latitude") is None:
+        session_loc = session.get("last_location")
+        if session_loc and session_loc.get("lat"):
+            data = {
+                "latitude": session_loc.get("lat"),
+                "longitude": session_loc.get("lng"),
+                "url": session_loc.get("url"),
+                "timestamp": session_loc.get("timestamp", time.time())
+            }
+
+    if data and data.get("latitude") is not None and data.get("longitude") is not None:
+        lat = float(data.get("latitude"))
+        lng = float(data.get("longitude"))
+        ts = data.get("timestamp", time.time())
+        diff_sec = max(0, int(time.time() - ts))
+        if diff_sec < 10:
+            time_str = "Just now"
+        elif diff_sec < 60:
+            time_str = f"{diff_sec}s ago"
+        elif diff_sec < 3600:
+            time_str = f"{diff_sec // 60}m ago"
+        else:
+            time_str = f"{diff_sec // 3600}h ago"
+
+        return jsonify({
+            "success": True,
+            "lat": lat,
+            "lng": lng,
+            "url": data.get("url") or f"https://www.google.com/maps?q={lat},{lng}",
+            "timestamp": ts,
+            "time_ago": time_str,
+            "address": f"Lat: {round(lat, 4)}, Lng: {round(lng, 4)}"
         })
 
-    except Exception as e:
-        print(f"✗ [INTERVENTION] Error: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"success": False, "error": str(e), "intervention": False}), 500
+    return jsonify({"error": "Location not yet shared"}), 404
 
 
-# === FEATURE 4: PROGRESS DNA CARD ===
+# --- COGNITIVE TRENDS API ---
 
-@app.route("/api/dna-card/<topic_id>")
-def dna_card(topic_id):
-    """Generate Progress DNA Card data for a topic. Works for both logged-in and guest users."""
+@app.route("/api/cognitive-trends")
+@login_required
+def api_cognitive_trends():
+    """Get cognitive trend data for charts."""
+    role = session.get("role", "patient")
+    linked_patient_id = session.get("linked_patient_id")
+    
+    # If caregiver/doctor, query patient's results
+    if role in ("caregiver", "doctor"):
+        target_id = linked_patient_id
+    else:
+        target_id = session.get("user_id")
+
+    game_results = []
     try:
-        user_id = session.get("user_id")
+        if target_id:
+            docs = db.collection('game_results').where('user_id', '==', target_id).get()
+            game_results = [d.to_dict() for d in docs]
         
-        topic_dict = {}
-        chapter_progress = {}
-        chapters_generated = {}
-        
-        # Try to load from database for logged-in users
-        if user_id:
-            doc = db.collection('user_topics').document(str(topic_id)).get()
-            if doc.exists:
-                topic_dict = doc.to_dict()
-                chapters_generated = json.loads(topic_dict.get("chapters_generated_json", "{}"))
-        
-        # Fall back to session data (for guest users or if not in DB)
-        if not topic_dict:
-            ai_data = session.get("ai_data", {})
-            syllabus = ai_data.get("syllabus", {})
-            
-            if not syllabus:
-                return jsonify({"success": False, "error": "No learning data available"}), 404
-            
-            topic_dict = {
-                "topic_title": syllabus.get("topic_title", "Learning Module"),
-                "cognitive_style": session.get("cognitive_style", "focus"),
-                "total_xp": session.get("total_xp", 0),
-                "syllabus_json": json.dumps(syllabus),
-                "chapters_generated_json": json.dumps(ai_data.get("chapters_generated", {}))
-            }
-            chapter_progress = session.get("chapter_progress", {})
-            chapters_generated = ai_data.get("chapters_generated", {})
-        else:
-            chapter_progress = json.loads(topic_dict.get("chapter_progress_json", "{}"))
-
-        # Completed chapter count
-        completed = sum(1 for v in chapter_progress.values() if isinstance(v, dict) and v.get("completed"))
-        syllabus = json.loads(topic_dict.get("syllabus_json", "{}"))
-        total_chapters = len(syllabus.get("chapters", []))
-
-        # Total XP
-        total_xp = topic_dict.get("total_xp", 0) or 0
-
-        # Emotion distribution from emotion_logs (only for logged-in users)
-        emotion_distribution = {}
-        if user_id:
-            emotion_docs = db.collection('emotion_logs').where('user_id', '==', user_id).where('topic_id', '==', topic_id).get()
-            for doc in emotion_docs:
-                state = doc.get("emotion_state")
-                emotion_distribution[state] = emotion_distribution.get(state, 0) + 1
-
-        # Dominant emotion
-        dominant_emotion = "focused"
-        if emotion_distribution:
-            dominant_emotion = max(emotion_distribution, key=emotion_distribution.get)
-
-        # Average quiz score from chapter_progress
-        quiz_scores = []
-        for cid, prog in chapter_progress.items():
-            if isinstance(prog, dict) and "quiz_score" in prog and prog.get("completed"):
-                quiz_scores.append(prog["quiz_score"])
-        avg_quiz_score = sum(quiz_scores) / len(quiz_scores) if quiz_scores else 0
-
-        # Badge collection from generated chapters
-        badge_collection = []
-        for ch_id in chapters_generated.keys():
-            ch_doc = db.collection('chapters').document(str(ch_id)).get()
-            if ch_doc.exists:
-                try:
-                    ch_data = json.loads(ch_doc.to_dict().get("data_json", "{}"))
-                    badge_collection.append({
-                        "badge_emoji": ch_data.get("badge_emoji", "🏆"),
-                        "badge_name": ch_data.get("badge_name", "Learner")
-                    })
-                except:
-                    pass
-
-        # Learning style
-        learning_style = topic_dict.get("cognitive_style", "focus").capitalize()
-
-        student_name = session.get("display_name", session.get("student_name", "Learner"))
-
-        result = {
-            "success": True,
-            "student_name": student_name,
-            "topic_title": topic_dict.get("topic_title", "Learning Module"),
-            "total_xp": total_xp,
-            "chapters_completed": completed,
-            "total_chapters": total_chapters,
-            "emotion_distribution": emotion_distribution,
-            "avg_quiz_score": round(avg_quiz_score, 1),
-            "badge_collection": badge_collection,
-            "dominant_emotion": dominant_emotion,
-            "learning_style": learning_style
-        }
-
-        print(f"🧬 [DNA-CARD] Generated for topic {topic_id}: {result['topic_title']}")
-        return jsonify(result)
-
+        # Fallback if unlinked or in test mode
+        if not game_results and role in ("caregiver", "doctor"):
+            all_results = db.collection('game_results').get()
+            if all_results:
+                game_results = [d.to_dict() for d in all_results]
     except Exception as e:
-        print(f"✗ [DNA-CARD] Error: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"success": False, "error": str(e)}), 500
+        print(f"⚠️ [TRENDS] Error querying game results: {e}")
+    
+    # Group by date
+    by_date = {}
+    for g in game_results:
+        date = g.get("date", "unknown")
+        if date not in by_date:
+            by_date[date] = []
+        by_date[date].append(g)
+    
+    # Daily averages
+    daily_scores = []
+    for date, games in sorted(by_date.items()):
+        avg = round(sum(g.get("accuracy", 0) for g in games) / len(games))
+        daily_scores.append({"date": date, "score": avg, "games": len(games)})
+    
+    domain_scores = calculate_domain_scores(game_results)
+    overall_score = calculate_overall_score(domain_scores)
+    
+    return jsonify({
+        "daily_scores": daily_scores[-30:],  # Last 30 days
+        "domain_scores": domain_scores,
+        "overall_score": overall_score,
+        "total_games": len(game_results)
+    })
 
 
-# Study Battle feature removed per user request.
+# --- DAILY ROUTINE API ---
+
+@app.route("/api/daily-routine")
+@login_required
+def api_daily_routine():
+    routine = get_daily_routine()
+    return jsonify({"routine": routine})
+
+
+# --- PUSH NOTIFICATION (placeholder for FCM) ---
+
+@app.route("/api/save-push-token", methods=["POST"])
+def api_save_push_token():
+    """Save FCM push token for the user."""
+    data = request.json
+    token = data.get("token")
+    user_id = session.get("user_id")
+    
+    if token and user_id:
+        db.collection('push_tokens').document(str(user_id)).set({
+            'token': token,
+            'updated_at': time.time()
+        })
+        return jsonify({"success": True})
+    
+    return jsonify({"error": "Missing data"}), 400
 
 
 if __name__ == "__main__":

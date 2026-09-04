@@ -1,0 +1,383 @@
+{% extends "base.html" %}
+{% block title %}Bagh-Baak — Tiger Hunt | NeuroLearn 2.0{% endblock %}
+{% block content %}
+<div class="game-container">
+    <div class="game-header">
+        <h1 class="game-title" style="font-family: var(--font-heading);">
+            <i class="ph ph-paw-print"></i> Bagh-Baak — Tiger Hunt
+        </h1>
+        <p class="game-instruction" id="game-instruction">
+            Place your goats to surround the tiger. Don't let the tiger eat your goats!
+        </p>
+        <button class="btn-tts-hero mt-16" onclick="speakText(document.getElementById('game-instruction').textContent)" style="font-size:14px; padding:8px 16px;">
+            <i class="fas fa-volume-up"></i> Read Aloud
+        </button>
+    </div>
+
+    <div class="game-stats">
+        <div class="game-stat"><span style="color: var(--secondary);">🐐</span> <span id="goats-left">8</span> goats</div>
+        <div class="game-stat"><span style="color: var(--accent);">💀</span> <span id="goats-eaten">0</span> eaten</div>
+        <div class="game-stat"><span style="color: var(--primary);">🏆</span> <span id="move-count">0</span> moves</div>
+        <div class="game-stat"><span>⏱️</span> <span id="timer">0:00</span></div>
+    </div>
+
+    <!-- Phase indicator -->
+    <div id="phase-indicator" style="text-align:center; margin-bottom:16px;">
+        <span class="badge badge-green" id="phase-badge">Phase 1: Place your goats</span>
+    </div>
+
+    <!-- SVG Board -->
+    <div class="bagh-board-container">
+        <svg id="bagh-board" viewBox="0 0 400 400" class="bagh-board">
+            <!-- Board will be drawn by JS -->
+        </svg>
+    </div>
+
+    <!-- Move hints -->
+    <div id="hint-area" style="text-align:center; margin-top:16px;">
+        <p id="hint-text" style="font-size:18px; font-weight:600; color: var(--text-secondary);">
+            Tap a glowing intersection to place a goat.
+        </p>
+    </div>
+
+    <!-- Game over overlay -->
+    <div id="game-over-overlay" style="display:none;" class="bagh-overlay">
+        <div class="bagh-result-card">
+            <div id="result-icon" style="font-size:72px; margin-bottom:16px;"></div>
+            <h2 id="result-title" style="font-family: var(--font-heading); font-size:28px;"></h2>
+            <p id="result-msg" style="color: var(--text-secondary); margin:12px 0 24px;"></p>
+            <div id="result-stats" style="margin-bottom:24px;"></div>
+            <a href="/dashboard" class="btn-primary" style="width:auto; padding:14px 32px;">
+                ← Back to Home
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.bagh-board-container {
+    max-width: 400px;
+    margin: 0 auto;
+    padding: 20px;
+    background: var(--gradient-card);
+    border-radius: var(--radius-xl);
+    border: 2px solid var(--border);
+    box-shadow: var(--shadow-lg);
+}
+.bagh-board { width: 100%; height: auto; cursor: pointer; }
+.board-line { stroke: #8B7355; stroke-width: 1.5; stroke-linecap: round; }
+.board-diag { stroke: #A0937D; stroke-width: 1; stroke-dasharray: 4,3; }
+.board-point {
+    fill: #F5EDD8; stroke: #8B7355; stroke-width: 1.5;
+    cursor: pointer; transition: all 0.2s ease;
+}
+.board-point:hover { fill: var(--primary-light); stroke: var(--primary); }
+.board-point.valid-move {
+    fill: var(--primary-light); stroke: var(--primary); stroke-width: 2;
+    animation: point-glow 1.2s ease-in-out infinite;
+}
+@keyframes point-glow {
+    0%, 100% { r: 10; opacity: 0.7; }
+    50% { r: 13; opacity: 1; }
+}
+.piece-tiger {
+    fill: var(--accent); stroke: var(--accent-dark); stroke-width: 2;
+    cursor: default; filter: drop-shadow(0 2px 4px rgba(184,50,39,0.4));
+}
+.piece-goat {
+    fill: var(--secondary); stroke: var(--secondary-dark); stroke-width: 2;
+    cursor: pointer; filter: drop-shadow(0 2px 4px rgba(58,110,74,0.3));
+    transition: all 0.3s ease;
+}
+.piece-goat.selected {
+    stroke: var(--primary); stroke-width: 3;
+    filter: drop-shadow(0 0 8px rgba(200,150,62,0.6));
+}
+.piece-label { font-size: 18px; pointer-events: none; text-anchor: middle; dominant-baseline: central; }
+.bagh-overlay {
+    position: fixed; inset: 0; background: rgba(31,42,26,0.7);
+    backdrop-filter: blur(12px); display: flex; align-items: center;
+    justify-content: center; z-index: 300;
+}
+.bagh-result-card {
+    background: var(--glass-bg); backdrop-filter: blur(24px);
+    border: 1.5px solid var(--glass-border); border-radius: var(--radius-xl);
+    padding: 40px; text-align: center; max-width: 400px; width: 90%;
+    box-shadow: var(--shadow-xl); animation: bounce-in 0.5s ease;
+}
+</style>
+
+<script>
+const DIFFICULTY = '{{ difficulty | default("easy") }}';
+const LANGUAGE = '{{ language | default("en") }}';
+
+const GRID = 5, TOTAL = 25, PAD = 40, BSIZE = 320, CELL = BSIZE / (GRID - 1);
+
+const CFG = {
+    easy:   { tigers: 1, goats: 8,  hints: true,  maxEat: 3 },
+    medium: { tigers: 2, goats: 12, hints: true,  maxEat: 4 },
+    hard:   { tigers: 4, goats: 20, hints: false, maxEat: 5 }
+}[DIFFICULTY] || { tigers: 1, goats: 8, hints: true, maxEat: 3 };
+
+let board = new Array(TOTAL).fill(null);
+let goatsToPlace = CFG.goats, goatsOnBoard = 0, goatsEaten = 0;
+let moveCount = 0, phase = 'place', selGoat = null, over = false;
+let timerSec = 0, timerInt = null, dTimes = [], lastMove = Date.now();
+
+function adj(p) {
+    const r = Math.floor(p/GRID), c = p%GRID, a = [];
+    if (r > 0) a.push(p - GRID);
+    if (r < GRID-1) a.push(p + GRID);
+    if (c > 0) a.push(p - 1);
+    if (c < GRID-1) a.push(p + 1);
+    if ((r+c) % 2 === 0) {
+        if (r>0 && c>0) a.push(p-GRID-1);
+        if (r>0 && c<GRID-1) a.push(p-GRID+1);
+        if (r<GRID-1 && c>0) a.push(p+GRID-1);
+        if (r<GRID-1 && c<GRID-1) a.push(p+GRID+1);
+    }
+    return a;
+}
+
+function captures(tp) {
+    const r = Math.floor(tp/GRID), c = tp%GRID, caps = [];
+    const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+    if ((r+c)%2===0) dirs.push([-1,-1],[-1,1],[1,-1],[1,1]);
+    for (const [dr,dc] of dirs) {
+        const mr = r+dr, mc = c+dc, er = r+2*dr, ec = c+2*dc;
+        if (er>=0 && er<GRID && ec>=0 && ec<GRID) {
+            const mp = mr*GRID+mc, ep = er*GRID+ec;
+            if (board[mp]==='goat' && board[ep]===null) caps.push({to:ep, cap:mp});
+        }
+    }
+    return caps;
+}
+
+function tigerMoves(tp) {
+    const m = adj(tp).filter(a => board[a]===null).map(a => ({to:a, cap:null}));
+    return m.concat(captures(tp));
+}
+
+function tigers() { return board.reduce((a,v,i) => v==='tiger'?[...a,i]:a, []); }
+
+function validPlayer() {
+    if (over) return [];
+    if (phase==='place') return board.reduce((a,v,i) => v===null?[...a,i]:a, []);
+    if (selGoat !== null) return adj(selGoat).filter(a => board[a]===null);
+    return [];
+}
+
+function init() {
+    board.fill(null);
+    const corners = [0,4,20,24];
+    for (let i = 0; i < CFG.tigers; i++) board[corners[i]] = 'tiger';
+    goatsToPlace = CFG.goats; goatsOnBoard = 0; goatsEaten = 0;
+    moveCount = 0; phase = 'place'; selGoat = null; over = false;
+    dTimes = []; lastMove = Date.now();
+    draw(); updateUI();
+    timerSec = 0;
+    if (timerInt) clearInterval(timerInt);
+    timerInt = setInterval(() => { timerSec++; document.getElementById('timer').textContent = fmt(timerSec); }, 1000);
+    speakText('Place your goats on the empty spots. Block the tiger!');
+}
+
+function draw() {
+    const svg = document.getElementById('bagh-board');
+    let h = '';
+    
+    // Grid lines
+    for (let i = 0; i < GRID; i++) {
+        h += `<line class="board-line" x1="${PAD}" y1="${PAD+i*CELL}" x2="${PAD+(GRID-1)*CELL}" y2="${PAD+i*CELL}"/>`;
+        h += `<line class="board-line" x1="${PAD+i*CELL}" y1="${PAD}" x2="${PAD+i*CELL}" y2="${PAD+(GRID-1)*CELL}"/>`;
+    }
+    
+    // Diagonals
+    for (let r = 0; r < GRID; r++) for (let c = 0; c < GRID; c++) {
+        if ((r+c)%2===0) {
+            const x = PAD+c*CELL, y = PAD+r*CELL;
+            if (r>0&&c>0) h += `<line class="board-diag" x1="${x}" y1="${y}" x2="${x-CELL}" y2="${y-CELL}"/>`;
+            if (r>0&&c<GRID-1) h += `<line class="board-diag" x1="${x}" y1="${y}" x2="${x+CELL}" y2="${y-CELL}"/>`;
+        }
+    }
+    
+    const vp = validPlayer();
+    
+    // Points
+    for (let p = 0; p < TOTAL; p++) {
+        const x = PAD+(p%GRID)*CELL, y = PAD+Math.floor(p/GRID)*CELL;
+        const vc = (vp.includes(p) && CFG.hints) ? 'valid-move' : '';
+        h += `<circle class="board-point ${vc}" cx="${x}" cy="${y}" r="10" onclick="click_(${p})"/>`;
+    }
+    
+    // Pieces
+    for (let p = 0; p < TOTAL; p++) {
+        const x = PAD+(p%GRID)*CELL, y = PAD+Math.floor(p/GRID)*CELL;
+        if (board[p]==='tiger') {
+            h += `<circle class="piece-tiger" cx="${x}" cy="${y}" r="16"/>`;
+            h += `<text class="piece-label" x="${x}" y="${y}">🐯</text>`;
+        } else if (board[p]==='goat') {
+            const sc = selGoat===p ? 'selected' : '';
+            h += `<circle class="piece-goat ${sc}" cx="${x}" cy="${y}" r="14" onclick="click_(${p})"/>`;
+            h += `<text class="piece-label" x="${x}" y="${y}">🐐</text>`;
+        }
+    }
+    
+    svg.innerHTML = h;
+}
+
+function click_(p) {
+    if (over) return;
+    
+    if (phase === 'place') {
+        if (board[p] !== null) return;
+        dTimes.push(Date.now() - lastMove); lastMove = Date.now();
+        board[p] = 'goat'; goatsToPlace--; goatsOnBoard++; moveCount++;
+        
+        if (goatsToPlace === 0) {
+            phase = 'move';
+            document.getElementById('phase-badge').textContent = 'Phase 2: Move your goats';
+            document.getElementById('phase-badge').className = 'badge badge-forest';
+            document.getElementById('hint-text').textContent = 'Tap a goat, then tap where to move it.';
+            speakText('All goats placed! Now move them to trap the tiger.');
+        }
+        draw(); updateUI();
+        setTimeout(aiMove, 600);
+    } else {
+        if (board[p] === 'goat') { selGoat = p; draw(); return; }
+        if (selGoat !== null && board[p] === null) {
+            const vm = adj(selGoat).filter(a => board[a]===null);
+            if (vm.includes(p)) {
+                dTimes.push(Date.now() - lastMove); lastMove = Date.now();
+                board[selGoat] = null; board[p] = 'goat'; selGoat = null; moveCount++;
+                draw(); updateUI();
+                setTimeout(aiMove, 600);
+            }
+        }
+    }
+}
+
+function aiMove() {
+    if (over) return;
+    const ts = tigers();
+    
+    // Capture first
+    for (const t of ts) {
+        const c = captures(t);
+        if (c.length) {
+            const m = c[Math.floor(Math.random()*c.length)];
+            board[t] = null; board[m.to] = 'tiger'; board[m.cap] = null;
+            goatsOnBoard--; goatsEaten++;
+            speakText('Tiger caught a goat!');
+            draw(); updateUI(); checkEnd(); return;
+        }
+    }
+    
+    // Move towards center
+    const st = [...ts].sort(() => Math.random()-0.5);
+    for (const t of st) {
+        const moves = adj(t).filter(a => board[a]===null);
+        if (moves.length) {
+            moves.sort((a,b) => {
+                const da = Math.abs(Math.floor(a/5)-2)+Math.abs(a%5-2);
+                const db = Math.abs(Math.floor(b/5)-2)+Math.abs(b%5-2);
+                return da-db;
+            });
+            board[t] = null; board[moves[0]] = 'tiger';
+            draw(); updateUI(); checkEnd(); return;
+        }
+    }
+    
+    endGame(true); // Tiger stuck = player wins
+}
+
+function checkEnd() {
+    if (goatsEaten >= CFG.maxEat) { endGame(false); return; }
+    const ts = tigers();
+    if (ts.length && ts.every(t => tigerMoves(t).length === 0)) endGame(true);
+}
+
+function endGame(won) {
+    over = true; clearInterval(timerInt);
+    document.getElementById('game-over-overlay').style.display = 'flex';
+    
+    const avgDT = dTimes.length ? Math.round(dTimes.reduce((a,b)=>a+b,0)/dTimes.length/100)/10 : 0;
+    const acc = moveCount ? Math.round((moveCount-goatsEaten)/moveCount*100) : 0;
+    
+    document.getElementById('result-icon').textContent = won ? '🏆' : '🐯';
+    document.getElementById('result-title').textContent = won ? 'You trapped the tiger!' : 'Tiger wins this time!';
+    document.getElementById('result-msg').textContent = won 
+        ? 'Excellent strategic thinking! Your brain is sharp.' 
+        : 'Good effort! Try again to surround the tiger.';
+    
+    document.getElementById('result-stats').innerHTML = `
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+            <div class="game-stat">🦶 ${moveCount} moves</div>
+            <div class="game-stat">⏱️ ${fmt(timerSec)}</div>
+            <div class="game-stat">🧠 ${avgDT}s avg</div>
+            <div class="game-stat">🎯 ${acc}% accuracy</div>
+        </div>
+    `;
+    
+    const bs = (typeof BAGH_STRINGS !== 'undefined' && BAGH_STRINGS[LANGUAGE]) ? BAGH_STRINGS[LANGUAGE] : { won: 'Congratulations! You trapped the tiger!', lost: 'The tiger won this time. Good effort!' };
+    speakText(won ? bs.won : bs.lost);
+    
+    fetch('/api/game-complete', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ game_type: 'bagh-baak', correct: won?1:0, total: 1, domain: 'Strategy',
+            metrics: { moves: moveCount, goats_eaten: goatsEaten, avg_dt: avgDT, accuracy: acc, time: timerSec, difficulty: DIFFICULTY }
+        })
+    }).catch(()=>{});
+}
+
+const BAGH_STRINGS = {
+    hi: { won: 'बधाई हो! आपने बाघ को घेर लिया!', lost: 'इस बार बाघ जीत गया। अच्छा प्रयास!' },
+    mr: { won: 'अभिनंदन! तुम्ही वाघाला पकडले!', lost: 'या वेळी वाघ जिंकला. छान प्रयत्न!' },
+    as: { won: 'অভিনন্দন! আপুনি বাঘটো ফান্দত পেলালে!', lost: 'এইবাৰ বাঘটো জিকিল। ভাল চেষ্টা!' },
+    bn: { won: 'অভিনন্দন! আপনি বাঘটিকে ফাঁদে ফেলেছেন!', lost: 'এবার বাঘ জিতেছে। ভালো চেষ্টা!' },
+    mni: { won: 'নুংঙাইবা ফাওই! অদোমনা শাওরোইবু ফারে!', lost: 'অমুক্কা হোৎনৌ।' },
+    ta: { won: 'வாழ்த்துகள்! நீங்கள் புலியைச் சிக்க வைத்தீர்கள்!', lost: 'புலி வென்றது. நல்ல முயற்சி!' },
+    en: { won: 'Congratulations! You trapped the tiger!', lost: 'The tiger won this time. Good effort!' }
+};
+
+function updateUI() {
+    document.getElementById('goats-left').textContent = goatsToPlace > 0 ? goatsToPlace : goatsOnBoard;
+    document.getElementById('goats-eaten').textContent = goatsEaten;
+    document.getElementById('move-count').textContent = moveCount;
+}
+
+function fmt(s) { return `${Math.floor(s/60)}:${(s%60).toString().padStart(2,'0')}`; }
+
+function speakText(text) {
+    const useLang = LANGUAGE || 'en';
+    fetch('/api/tts/speak', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({text: text, lang: useLang})
+    }).then(r => {
+        if (!r.ok) throw new Error('TTS failed');
+        return r.blob();
+    }).then(blob => {
+        const a = new Audio(URL.createObjectURL(blob));
+        a.play().catch(() => browserSpeakBagh(text));
+    }).catch(() => browserSpeakBagh(text));
+}
+
+function browserSpeakBagh(text) {
+    if ('speechSynthesis' in window) {
+        speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        u.rate = 0.8;
+        const bcp47 = LANGUAGE==='hi'?'hi-IN':LANGUAGE==='mr'?'mr-IN':LANGUAGE==='as'?'as-IN':LANGUAGE==='bn'?'bn-IN':LANGUAGE==='mni'?'bn-IN':'en-IN';
+        u.lang = bcp47;
+        const voices = speechSynthesis.getVoices();
+        const match = voices.find(v => v.lang.startsWith(bcp47.split('-')[0]));
+        if (match) u.voice = match;
+        speechSynthesis.speak(u);
+    }
+}
+
+init();
+</script>
+{% endblock %}

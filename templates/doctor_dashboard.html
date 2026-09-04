@@ -1,0 +1,333 @@
+{% extends "base.html" %}
+{% block title %}Doctor Dashboard — NeuroLearn 2.0{% endblock %}
+{% block content %}
+<div class="cg-header">
+    <h1 class="cg-title">👨‍⚕️ Doctor Dashboard</h1>
+    {% if linked_patient_id %}
+    <p class="cg-patient-info">
+        Patient: <strong>{{ patient_name }}</strong> | 
+        Stage: <strong>{{ profile.get('dementia_stage', 'N/A') | capitalize }}</strong> |
+        Age: <strong>{{ profile.get('age', 'N/A') }}</strong> |
+        Region: <strong>{{ profile.get('region', 'N/A') }}</strong>
+    </p>
+    {% endif %}
+</div>
+
+{% if not linked_patient_id %}
+<!-- NOT LINKED YET -->
+<div class="card" style="border-color:var(--accent); background:var(--accent-light); margin-bottom:24px;">
+    <div class="card-header">
+        <div class="card-icon" style="background:var(--accent-light);">🔗</div>
+        <div>
+            <div class="card-title" style="color:#92400E;">Link to a Patient</div>
+            <div class="card-subtitle">Enter the patient's unique code to access their data</div>
+        </div>
+    </div>
+    <div style="display:flex; gap:12px; align-items:flex-end;">
+        <div class="form-group" style="flex:1; margin-bottom:0;">
+            <label class="form-label">Patient Code</label>
+            <input type="text" id="link-code" class="form-input" placeholder="e.g. AB12CD" style="text-transform:uppercase; font-weight:800; letter-spacing:3px; text-align:center;">
+        </div>
+        <button class="btn-primary" style="width:auto; min-height:64px; padding:16px 32px;" onclick="linkPatient()">LINK</button>
+    </div>
+</div>
+
+{% else %}
+<!-- LINKED — Doctor View -->
+<div class="cg-grid">
+    <!-- Overall Score -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-icon">🧠</div>
+            <div>
+                <div class="card-title">Overall Cognitive Score</div>
+                <div class="card-subtitle">Based on {{ total_games }} games played</div>
+            </div>
+        </div>
+        <div style="text-align:center; padding:16px 0;">
+            <div style="font-size:56px; font-weight:900; color:var(--primary);">{{ overall_score }}<span style="font-size:24px;">/100</span></div>
+            <p style="font-size:18px; color:var(--text-secondary); margin-top:8px;">Average Accuracy: <strong>{{ avg_accuracy }}%</strong></p>
+        </div>
+    </div>
+
+    <!-- Domain Scores -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-icon">📊</div>
+            <div>
+                <div class="card-title">Cognitive Domains</div>
+                <div class="card-subtitle">Memory, Attention, Executive Function</div>
+            </div>
+        </div>
+        
+        {% for domain, data in domain_scores.items() %}
+        <div class="cg-domain-row">
+            <span class="cg-domain-label">
+                {% if domain == 'Memory' %}🧠{% elif domain == 'Attention' %}👁️{% else %}🧩{% endif %}
+                {{ domain }}
+            </span>
+            <div class="cg-domain-bar">
+                <div class="cg-domain-fill" style="width: {{ data.score }}%;"></div>
+            </div>
+            <span class="cg-domain-value">{{ data.score }}%</span>
+            <span class="cg-domain-trend">
+                {% if data.trend > 0 %}
+                    <span style="color:var(--success);">↑</span>
+                {% elif data.trend < 0 %}
+                    <span style="color:var(--danger);">↓</span>
+                {% else %}→{% endif %}
+            </span>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Clinical Alerts -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-icon" style="background:var(--danger-light);">🚨</div>
+            <div>
+                <div class="card-title">Clinical Alerts</div>
+                <div class="card-subtitle">Significant changes requiring attention</div>
+            </div>
+        </div>
+        
+        {% if alerts %}
+            {% for alert in alerts %}
+            <div class="cg-alert {{ alert.type }}">
+                <span>{% if alert.type == 'critical' %}🚨{% elif alert.type == 'warning' %}⚠️{% else %}✅{% endif %}</span>
+                <span>{{ alert.message }}</span>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="cg-alert positive">
+                <span>✅</span>
+                <span>No concerning changes detected. Patient is engaging with exercises.</span>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Real-Time Patient Location Map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        @keyframes pulse-loc { 0% { transform: scale(0.95); opacity: 0.9; } 50% { transform: scale(1.2); opacity: 0.4; } 100% { transform: scale(0.95); opacity: 0.9; } }
+        .live-dot { width: 12px; height: 12px; background-color: #10B981; border-radius: 50%; display: inline-block; animation: pulse-loc 2s infinite ease-in-out; }
+    </style>
+    <div class="card" style="overflow:hidden;">
+        <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; align-items:center; gap:12px;">
+                <div class="card-icon" style="background:#EFF6FF;">📍</div>
+                <div>
+                    <div class="card-title">Patient Live Location</div>
+                    <div class="card-subtitle" id="loc-status-subtitle">
+                        {% if last_location and last_location.get('lat') %}
+                        Live GPS tracking active
+                        {% else %}
+                        Waiting for patient location
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            <button onclick="fetchLiveLocation()" class="btn-secondary" style="font-size:14px; padding:6px 14px; min-height:auto; cursor:pointer;" title="Refresh GPS">
+                🔄 Refresh
+            </button>
+        </div>
+        
+        <div id="patient-map" style="height: 320px; width: 100%; border-radius: var(--radius-md); border: 2px solid var(--border); margin: 12px 0; background: #e2e8f0; z-index: 1;"></div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; padding-top: 4px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span class="live-dot"></span>
+                <span id="loc-address-text" style="font-weight:700; color:var(--text-primary); font-size:15px;">
+                    {{ last_location.address if last_location and last_location.get('address') else 'GPS signal waiting...' }}
+                </span>
+            </div>
+            <a id="loc-gmaps-link" href="{{ last_location.url if last_location and last_location.get('url') else '#' }}" target="_blank" style="color:#2563EB; font-weight:700; text-decoration:none; font-size:15px; {{ '' if last_location and last_location.get('url') else 'display:none;' }}">
+                Open in Google Maps ↗
+            </a>
+        </div>
+    </div>
+
+    <!-- Mini-Cog & Assessment Data -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-icon">📝</div>
+            <div>
+                <div class="card-title">Assessment Data</div>
+                <div class="card-subtitle">Mini-Cog and baseline information</div>
+            </div>
+        </div>
+        <table style="width:100%; border-collapse:collapse; font-size:18px;">
+            <tr style="border-bottom:1px solid var(--border);">
+                <td style="padding:12px; font-weight:600;">Dementia Stage</td>
+                <td style="padding:12px;">{{ profile.get('dementia_stage', 'N/A') | capitalize }}</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+                <td style="padding:12px; font-weight:600;">Patient Age</td>
+                <td style="padding:12px;">{{ profile.get('age', 'N/A') }}</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+                <td style="padding:12px; font-weight:600;">Region</td>
+                <td style="padding:12px;">{{ profile.get('region', 'N/A') }}</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+                <td style="padding:12px; font-weight:600;">Language</td>
+                <td style="padding:12px;">{{ profile.get('language', 'en') | upper }}</td>
+            </tr>
+            <tr>
+                <td style="padding:12px; font-weight:600;">Mini-Cog Score</td>
+                <td style="padding:12px;">{{ profile.get('minicog_score', {}).get('stage', 'N/A') | capitalize }}</td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- Actions -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <a href="/report" class="btn-primary" style="text-align:center;">📊 Full Report</a>
+        <button class="btn-secondary" onclick="window.print()">📥 Print / Save</button>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function linkPatient() {
+    const code = document.getElementById('link-code').value.trim().toUpperCase();
+    if (!code) { alert('Please enter a patient code.'); return; }
+    
+    try {
+        const r = await fetch('/api/link-patient', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({patient_code: code})
+        });
+        const data = await r.json();
+        
+        if (data.success) {
+            alert(`✅ Linked to patient: ${data.patient_name}`);
+            window.location.reload();
+        } else {
+            alert(data.error || 'Failed to link');
+        }
+    } catch(e) {
+        alert('Error linking patient');
+    }
+}
+</script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// --- Real-time Leaflet Map Logic for Doctor Dashboard ---
+let patientMap = null;
+let patientMarker = null;
+
+const initialLat = {{ last_location.lat if last_location and last_location.get('lat') else 19.0304 }};
+const initialLng = {{ last_location.lng if last_location and last_location.get('lng') else 73.0166 }};
+const hasInitialLocation = {{ 'true' if last_location and last_location.get('lat') else 'false' }};
+
+function initPatientMap() {
+    const mapEl = document.getElementById('patient-map');
+    if (!mapEl || typeof L === 'undefined') return;
+
+    if (patientMap) {
+        patientMap.remove();
+    }
+
+    patientMap = L.map('patient-map', {
+        zoomControl: true,
+        attributionControl: false
+    }).setView([initialLat, initialLng], hasInitialLocation ? 15 : 12);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19
+    }).addTo(patientMap);
+
+    // Custom patient avatar marker icon
+    const patientIcon = L.divIcon({
+        className: 'custom-patient-marker',
+        html: `
+            <div style="position:relative; width:44px; height:44px; display:flex; align-items:center; justify-content:center;">
+                <span style="position:absolute; width:44px; height:44px; border-radius:50%; background:rgba(16,185,129,0.35); animation:pulse-loc 2s infinite ease-out;"></span>
+                <span style="position:relative; width:34px; height:34px; background:#10B981; border:3px solid white; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 10px rgba(0,0,0,0.3); font-size:18px;">
+                    👴
+                </span>
+            </div>
+        `,
+        iconSize: [44, 44],
+        iconAnchor: [22, 22]
+    });
+
+    if (hasInitialLocation) {
+        patientMarker = L.marker([initialLat, initialLng], {icon: patientIcon}).addTo(patientMap)
+            .bindPopup(`<strong>📍 {{ patient_name }}</strong><br><span style="font-size:12px; color:#64748B;">Live Location</span>`)
+            .openPopup();
+    }
+}
+
+async function fetchLiveLocation() {
+    try {
+        const r = await fetch('/api/patient-live-location');
+        if (!r.ok) return;
+        const data = await r.json();
+        
+        if (data.success && data.lat && data.lng) {
+            const lat = parseFloat(data.lat);
+            const lng = parseFloat(data.lng);
+            const latLng = [lat, lng];
+
+            const addrEl = document.getElementById('loc-address-text');
+            if (addrEl) addrEl.textContent = data.address || `Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`;
+
+            const gmapsLink = document.getElementById('loc-gmaps-link');
+            if (gmapsLink) {
+                gmapsLink.href = data.url || `https://www.google.com/maps?q=${lat},${lng}`;
+                gmapsLink.style.display = 'inline';
+            }
+
+            const subEl = document.getElementById('loc-status-subtitle');
+            if (subEl) subEl.textContent = `Live GPS ping updated (${new Date().toLocaleTimeString()})`;
+
+            if (!patientMap) {
+                initPatientMap();
+            }
+
+            if (patientMarker) {
+                patientMarker.setLatLng(latLng);
+            } else if (patientMap) {
+                const patientIcon = L.divIcon({
+                    className: 'custom-patient-marker',
+                    html: `
+                        <div style="position:relative; width:44px; height:44px; display:flex; align-items:center; justify-content:center;">
+                            <span style="position:absolute; width:44px; height:44px; border-radius:50%; background:rgba(16,185,129,0.35); animation:pulse-loc 2s infinite ease-out;"></span>
+                            <span style="position:relative; width:34px; height:34px; background:#10B981; border:3px solid white; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 10px rgba(0,0,0,0.3); font-size:18px;">
+                                👴
+                            </span>
+                        </div>
+                    `,
+                    iconSize: [44, 44],
+                    iconAnchor: [22, 22]
+                });
+                patientMarker = L.marker(latLng, {icon: patientIcon}).addTo(patientMap)
+                    .bindPopup(`<strong>📍 {{ patient_name }}</strong><br><span style="font-size:12px; color:#64748B;">Live Location</span>`)
+                    .openPopup();
+            }
+
+            if (patientMap) {
+                patientMap.setView(latLng, 15);
+            }
+        }
+    } catch (e) {
+        console.warn("Live GPS fetch error:", e);
+    }
+}
+
+// Initialize on DOM load
+window.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        initPatientMap();
+        fetchLiveLocation();
+    }, 200);
+    // Continuously poll every 4 seconds for instant real-time tracking
+    setInterval(fetchLiveLocation, 4000);
+});
+</script>
+{% endblock %}

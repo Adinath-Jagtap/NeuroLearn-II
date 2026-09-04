@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}Patient Login — NeuroLearn 2.0{% endblock %}
+{% block content %}
+<div class="auth-container">
+    <div class="auth-card" style="max-width: 480px;">
+
+        {% if mode == 'invalid' %}
+        <!-- Invalid/Expired Invite -->
+        <div style="text-align:center; padding: 16px 0;">
+            <div style="font-size:64px; margin-bottom:16px;">❌</div>
+            <h1 class="auth-title" style="color:var(--danger);">Invalid Invite Link</h1>
+            <p style="font-size:18px; color:var(--text-secondary); margin-bottom:24px; line-height:1.6;">
+                This invite link is invalid or has expired.<br>
+                Please ask your caregiver for a new link.
+            </p>
+            <a href="/login-pin" class="btn-primary" style="display:inline-block; padding:16px 32px; text-decoration:none; font-size:18px;">
+                🔑 Patient PIN Login Instead
+            </a>
+        </div>
+
+        {% else %}
+        <!-- PIN Entry for Patient -->
+        <div style="text-align:center; margin-bottom:28px;">
+            <div style="font-size:72px; margin-bottom:8px;">👴</div>
+            <h1 class="auth-title" style="font-size:28px;">
+                Welcome{% if patient_name %}, {{ patient_name }}{% endif %}!
+            </h1>
+            <p style="font-size:17px; color:var(--text-secondary); line-height:1.6; margin-top:8px;">
+                {% if caregiver_name %}
+                    Your caregiver <strong>{{ caregiver_name }}</strong> has set up your NeuroLearn account.
+                {% else %}
+                    Your caregiver has set up your NeuroLearn account.
+                {% endif %}
+                <br>Enter your <strong>4-digit PIN</strong> to get started.
+            </p>
+        </div>
+
+        {% if error %}
+        <div class="form-error" style="font-size:18px; text-align:center; margin-bottom:20px;">
+            ⚠️ {{ error }}
+        </div>
+        {% endif %}
+
+        <form method="POST" action="/join/{{ token }}">
+            <div class="form-group">
+                <label class="form-label" style="font-size:20px; font-weight:800; text-align:center; display:block; margin-bottom:16px;">
+                    🔐 Your 4-Digit PIN
+                </label>
+                <!-- Big PIN input boxes -->
+                <div style="display:flex; gap:12px; justify-content:center; margin-bottom:24px;" id="pin-boxes">
+                    <input type="tel" maxlength="1" class="pin-digit" id="p0" style="width:72px; height:80px; font-size:36px; font-weight:900; text-align:center; border:3px solid var(--border); border-radius:16px; background:var(--bg-warm); color:var(--text-primary);" oninput="moveFocus(0)" onkeydown="handleKey(event,0)">
+                    <input type="tel" maxlength="1" class="pin-digit" id="p1" style="width:72px; height:80px; font-size:36px; font-weight:900; text-align:center; border:3px solid var(--border); border-radius:16px; background:var(--bg-warm); color:var(--text-primary);" oninput="moveFocus(1)" onkeydown="handleKey(event,1)">
+                    <input type="tel" maxlength="1" class="pin-digit" id="p2" style="width:72px; height:80px; font-size:36px; font-weight:900; text-align:center; border:3px solid var(--border); border-radius:16px; background:var(--bg-warm); color:var(--text-primary);" oninput="moveFocus(2)" onkeydown="handleKey(event,2)">
+                    <input type="tel" maxlength="1" class="pin-digit" id="p3" style="width:72px; height:80px; font-size:36px; font-weight:900; text-align:center; border:3px solid var(--border); border-radius:16px; background:var(--bg-warm); color:var(--text-primary);" oninput="moveFocus(3)" onkeydown="handleKey(event,3)">
+                </div>
+                <!-- Hidden combined PIN field -->
+                <input type="hidden" name="pin" id="pin-combined">
+            </div>
+
+            <!-- Number Pad (accessibility for elderly) -->
+            <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:10px; max-width:300px; margin:0 auto 24px;">
+                {% for n in ['1','2','3','4','5','6','7','8','9','','0','⌫'] %}
+                <button type="button"
+                    style="height:64px; font-size:28px; font-weight:800; border:2px solid var(--border); border-radius:14px; background:var(--bg-card); color:var(--text-primary); cursor:pointer; transition:all 0.15s;"
+                    onclick="padPress('{{ n }}')"
+                    {% if n == '' %}disabled style="visibility:hidden;"{% endif %}>
+                    {{ n }}
+                </button>
+                {% endfor %}
+            </div>
+
+            <button type="submit" class="btn-primary btn-big" id="submit-btn" onclick="combinePIN()">
+                ✅ ENTER &amp; START GAMES
+            </button>
+        </form>
+
+        <p style="text-align:center; margin-top:20px; font-size:15px; color:var(--text-muted);">
+            Don't remember your PIN? Ask your caregiver to check the <strong>Caregiver Dashboard</strong>.
+        </p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const digits = ['p0','p1','p2','p3'];
+
+function moveFocus(idx) {
+    const val = document.getElementById(digits[idx]).value;
+    if (val && idx < 3) {
+        document.getElementById(digits[idx+1]).focus();
+    }
+}
+
+function handleKey(e, idx) {
+    if (e.key === 'Backspace') {
+        const el = document.getElementById(digits[idx]);
+        if (!el.value && idx > 0) {
+            document.getElementById(digits[idx-1]).focus();
+            document.getElementById(digits[idx-1]).value = '';
+        }
+    }
+}
+
+function padPress(char) {
+    if (char === '⌫') {
+        // Find last filled digit and clear it
+        for (let i = 3; i >= 0; i--) {
+            const el = document.getElementById(digits[i]);
+            if (el.value) { el.value = ''; el.focus(); break; }
+        }
+        return;
+    }
+    // Fill next empty digit
+    for (let i = 0; i < 4; i++) {
+        const el = document.getElementById(digits[i]);
+        if (!el.value) {
+            el.value = char;
+            if (i < 3) document.getElementById(digits[i+1]).focus();
+            else el.blur();
+            break;
+        }
+    }
+}
+
+function combinePIN() {
+    const pin = digits.map(id => document.getElementById(id).value).join('');
+    document.getElementById('pin-combined').value = pin;
+}
+
+// Style focus
+digits.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('focus', () => el.style.borderColor = 'var(--primary)');
+    el.addEventListener('blur', () => el.style.borderColor = 'var(--border)');
+});
+
+// Auto focus first digit
+const first = document.getElementById('p0');
+if (first) first.focus();
+
+// Speak welcome message
+window.addEventListener('load', () => {
+    const name = "{{ patient_name or '' }}";
+    const cg = "{{ caregiver_name or '' }}";
+    if ('speechSynthesis' in window && "{{ mode }}" === "pin") {
+        const msg = name 
+            ? `Welcome ${name}! Please enter your 4-digit PIN to start your brain exercises.`
+            : `Welcome! Please enter your 4-digit PIN to start.`;
+        const u = new SpeechSynthesisUtterance(msg);
+        u.rate = 0.8;
+        setTimeout(() => speechSynthesis.speak(u), 500);
+    }
+});
+</script>
+{% endblock %}

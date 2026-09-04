@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+{% block title %}AI Memory Companion — NeuroLearn 2.0{% endblock %}
+{% block content %}
+<div class="chat-container">
+    <div style="text-align:center; margin-bottom:12px;">
+        <h2 style="font-size:24px; font-weight:900;">🤖 {{ t['companion_title'] }}</h2>
+        <p style="font-size:14px; color:var(--text-secondary);">{{ t['companion_subtitle'] }}</p>
+    </div>
+    
+    <div class="chat-messages" id="chat-messages">
+        <div class="chat-bubble ai">
+            <div class="chat-sender">🤖 {{ t['nav_companion'] }}</div>
+            {{ t['hello'] }} {{ patient_name }}! 😊 {{ t['companion_subtitle'] }}
+        </div>
+    </div>
+    
+    <div class="quick-replies">
+        <button class="quick-reply" onclick="sendQuick(this.innerText)">{{ t['quick_hi'] }}</button>
+        <button class="quick-reply" onclick="sendQuick(this.innerText)">{{ t['quick_family'] }}</button>
+        <button class="quick-reply" onclick="sendQuick(this.innerText)">{{ t['quick_medicine'] }}</button>
+        <button class="quick-reply" onclick="sendQuick(this.innerText)">{{ t['quick_food'] }}</button>
+        <button class="quick-reply" onclick="sendQuick(this.innerText)">{{ t['quick_weather'] }}</button>
+        <button class="quick-reply" onclick="sendQuick(this.innerText)">{{ t['quick_festival'] }}</button>
+    </div>
+    
+    <div class="chat-input-area">
+        <input type="text" class="chat-input" id="chat-input" placeholder="{{ t['chat_placeholder'] }}" 
+               onkeydown="if(event.key==='Enter')sendMessage()">
+        <button class="voice-btn" onclick="startVoiceInput()" id="voice-chat-btn" style="width:56px; height:56px; font-size:24px; margin:0;" title="{{ t['listening'] }}">
+            <i class="fas fa-microphone"></i>
+        </button>
+        <button class="chat-send-btn" onclick="sendMessage()" title="{{ t['send'] }}">
+            <i class="fas fa-paper-plane"></i>
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const LANG = '{{ language }}';
+const PATIENT_NAME = '{{ patient_name }}';
+let isSending = false;
+
+// Auto-read first message in patient's language
+const COMPANION_GREETINGS = {
+    'hi': `नमस्ते ${PATIENT_NAME} जी! आज आप कैसा महसूस कर रहे हैं? मुझे आपके साथ बात करके बहुत खुशी होगी।`,
+    'mr': `नमस्कार ${PATIENT_NAME}! आज तुम्हाला कसे वाटत आहे? तुमच्याशी गप्पा मारायला मला खूप आवडेल.`,
+    'as': `নমস্কাৰ ${PATIENT_NAME}! আজি আপোনাৰ কেনে লাগিছে? আপোনাৰ সৈতে কথা পাতি মোৰ ভাল লাগিব।`,
+    'bn': `নমস্কার ${PATIENT_NAME}! আজ আপনার কেমন লাগছে? আপনার সাথে কথা বলতে আমার খুব ভালো লাগবে।`,
+    'mni': `খুরুমজরি ${PATIENT_NAME}! অদোম ঙসি করম্না তৌরিগে? অদোমগা ৱারী শাবা ঐ য়াম্না নুংঙাইগনি।`,
+    'ta': `வணக்கம் ${PATIENT_NAME}! இன்று நீங்கள் எப்படி உணர்கிறீர்கள்? உங்களுடன் பேசுவதில் எனக்கு மிக்க மகிழ்ச்சி.`,
+    'en': `Hello ${PATIENT_NAME}! How are you feeling today? I would love to hear about your day or chat about happy memories.`
+};
+
+window.addEventListener('load', () => {
+    const greeting = COMPANION_GREETINGS[LANG] || COMPANION_GREETINGS['en'];
+    setTimeout(() => {
+        speakText(greeting, LANG);
+    }, 600);
+});
+
+function sendQuick(text) {
+    document.getElementById('chat-input').value = text;
+    sendMessage();
+}
+
+async function sendMessage() {
+    const input = document.getElementById('chat-input');
+    const message = input.value.trim();
+    if (!message || isSending) return;
+    
+    input.value = '';
+    isSending = true;
+    
+    // Add user bubble
+    addBubble(message, 'user');
+    
+    // Add typing indicator
+    const typingId = addTypingIndicator();
+    
+    try {
+        // Get current language from header selector or default to page LANG
+        const activeLang = document.getElementById('lang-select')?.value || LANG || 'en';
+        const r = await fetch('/api/companion-chat', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({message: message, language: activeLang})
+        });
+        const data = await r.json();
+        
+        // Remove typing indicator
+        removeTypingIndicator(typingId);
+        
+        if (data.success) {
+            addBubble(data.response, 'ai');
+            speakText(data.response);
+        } else {
+            const lang = document.getElementById('lang-select')?.value || LANG || 'en';
+            const fallbacks = {
+                mr: 'माफ करा, मला नीट कळले नाही. कृपया पुन्हा सांगाल का? 😊',
+                hi: 'माफ कीजिए, मुझे सुनाई नहीं दिया। क्या आप फिर से कह सकते हैं? 😊',
+                as: 'মাফ কৰিব, মই ভালদরে বুজিব পরা নাইলোং৷ আথাই আবাৰ কৰাৱকৈ কব, নোলোগে? 😊',
+                ta: 'மன்னிக்கூம், தயவுசெய்து மீண்டும் சோல்லுங்களா? 😊',
+                en: "I'm sorry, I had a little trouble there. Could you say that again? 😊"
+            };
+            addBubble(fallbacks[lang] || fallbacks.en, 'ai');
+        }
+    } catch(e) {
+        removeTypingIndicator(typingId);
+        const lang = document.getElementById('lang-select')?.value || LANG || 'en';
+        const connFallbacks = {
+            mr: 'आत्ता कनेक्शन मध्ये समस्या आहे. थोड्या वेळाने पुन्हा प्रयत्न करू. 💚',
+            hi: 'अभी कनेक्शन में समस्या है। थोड़ी देर बाद फिर कोशिश करते हैं। 💚',
+            as: 'এতিয়া সংযোগত সমস্যা আছে৷ পাছত আবাৰ চেষ্টা কৰোঁ৷ 💚',
+            ta: 'இப்போது இணைப்பில் சிக்கல் உள்ளது. கொஞ்சம் பழகி மீண்டும் முயற்சிக்கலாம். 💚',
+            en: "I'm having trouble connecting right now. Let's try again in a moment. 💚"
+        };
+        addBubble(connFallbacks[lang] || connFallbacks.en, 'ai');
+    }
+    
+    isSending = false;
+}
+
+function addBubble(text, type) {
+    const container = document.getElementById('chat-messages');
+    const bubble = document.createElement('div');
+    bubble.className = `chat-bubble ${type}`;
+    
+    if (type === 'ai') {
+        bubble.innerHTML = `<div class="chat-sender">🤖 Companion</div>${text}`;
+    } else {
+        bubble.textContent = text;
+    }
+    
+    container.appendChild(bubble);
+    container.scrollTop = container.scrollHeight;
+}
+
+function addTypingIndicator() {
+    const container = document.getElementById('chat-messages');
+    const id = 'typing-' + Date.now();
+    const div = document.createElement('div');
+    div.className = 'chat-bubble ai';
+    div.id = id;
+    div.innerHTML = `<div class="typing-indicator">
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+    </div>`;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+    return id;
+}
+
+function removeTypingIndicator(id) {
+    const el = document.getElementById(id);
+    if (el) el.remove();
+}
+
+function speakText(text) {
+    // Try server TTS first, fallback to browser
+    fetch('/api/tts/speak', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({text: text, lang: LANG})
+    }).then(r => {
+        if (r.ok) return r.blob();
+        throw new Error('TTS failed');
+    }).then(blob => {
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audio.play().catch(() => browserSpeak(text));
+    }).catch(() => browserSpeak(text));
+}
+
+function browserSpeak(text) {
+    if ('speechSynthesis' in window) {
+        speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        u.rate = 0.8;
+        u.lang = LANG === 'hi' ? 'hi-IN' : LANG === 'mr' ? 'mr-IN' : LANG === 'as' ? 'as-IN' : LANG === 'bn' ? 'bn-IN' : LANG === 'mni' ? 'bn-IN' : LANG === 'ta' ? 'ta-IN' : 'en-US';
+        speechSynthesis.speak(u);
+    }
+}
+
+function startVoiceInput() {
+    if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+        alert('Voice not supported. Please type instead.');
+        return;
+    }
+    
+    const btn = document.getElementById('voice-chat-btn');
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const rec = new SpeechRecognition();
+    rec.lang = LANG === 'hi' ? 'hi-IN' : LANG === 'mr' ? 'mr-IN' : LANG === 'as' ? 'as-IN' : LANG === 'bn' ? 'bn-IN' : LANG === 'mni' ? 'bn-IN' : LANG === 'ta' ? 'ta-IN' : 'en-US';
+    rec.continuous = false;
+    rec.interimResults = false;
+    
+    rec.onstart = () => btn.classList.add('listening');
+    rec.onend = () => btn.classList.remove('listening');
+    rec.onerror = () => btn.classList.remove('listening');
+    
+    rec.onresult = (e) => {
+        const transcript = e.results[0][0].transcript;
+        document.getElementById('chat-input').value = transcript;
+        sendMessage();
+    };
+    
+    rec.start();
+}
+</script>
+{% endblock %}
