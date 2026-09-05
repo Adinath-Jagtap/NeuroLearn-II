@@ -1,19 +1,33 @@
 {% extends "base.html" %}
-{% block title %}Cognitive Report — NeuroLearn 2.0{% endblock %}
+{% block title %}{{ t.get('nav_report', 'Cognitive Report') }} — NeuroLearn 2.0{% endblock %}
 {% block content %}
 <div class="report-header">
-    <h1 style="font-size:28px; font-weight:900;">📊 Cognitive Health Report</h1>
+    <h1 style="font-size:28px; font-weight:900;">📊 {{ t.get('nav_report', 'Cognitive Health Report') }}</h1>
     <p style="color:var(--text-secondary);">
         Patient: <strong>{{ patient_name }}</strong> | 
+        {% if patient_code %}Patient Code: <strong style="font-family:monospace; background:rgba(255,255,255,0.85); padding:3px 8px; border-radius:6px; letter-spacing:1px; border:1px solid var(--border);">{{ patient_code }}</strong> | {% endif %}
         Age: <strong>{{ profile.get('age', 'N/A') }}</strong> | 
         Stage: <strong>{{ profile.get('dementia_stage', 'N/A') | capitalize }}</strong>
     </p>
     
     <div class="report-overall">
-        <div class="report-score-label">Overall Cognitive Score</div>
+        <div class="report-score-label">{{ t.get('overall_score', 'Overall Cognitive Score') }}</div>
         <div class="report-score-big">{{ overall_score }}/100</div>
     </div>
 </div>
+
+{% if total_games == 0 %}
+<div class="card" style="text-align:center; padding:32px 20px; margin-bottom:24px; background:var(--primary-light); border:2px dashed var(--primary); border-radius:var(--radius-lg);">
+    <div style="font-size:48px; margin-bottom:12px;">🎮</div>
+    <h3 style="font-size:22px; font-weight:800; color:var(--primary-dark); margin-bottom:8px;">{{ t.get('no_games_yet_title', 'No Games Played Yet') }}</h3>
+    <p style="color:var(--text-secondary); max-width:480px; margin:0 auto 20px; font-size:16px;">
+        {{ t.get('no_games_yet_desc', 'Complete daily exercises like Who Is This?, Pattern Recall, or Bagh-Baak to track cognitive health scores and domain performance over time.') }}
+    </p>
+    <a href="/dashboard" class="btn-primary" style="display:inline-block; width:auto; padding:12px 28px;">
+        ▶ {{ t.get('start_exercises_btn', 'Start Brain Exercises') }}
+    </a>
+</div>
+{% endif %}
 
 <div class="cg-grid">
     <!-- Domain Breakdown -->
@@ -21,18 +35,18 @@
         <div class="card-header">
             <div class="card-icon">🧠</div>
             <div>
-                <div class="card-title">Domain Breakdown</div>
-                <div class="card-subtitle">Performance by cognitive area</div>
+                <div class="card-title">{{ t.get('domain_breakdown', 'Domain Breakdown') }}</div>
+                <div class="card-subtitle">{{ t.get('domain_performance', 'Performance by cognitive area') }}</div>
             </div>
         </div>
         
         <table style="width:100%; border-collapse:collapse; font-size:18px;">
             <thead>
                 <tr style="border-bottom:2px solid var(--border);">
-                    <th style="padding:12px; text-align:left; font-weight:700;">Domain</th>
-                    <th style="padding:12px; text-align:center; font-weight:700;">Score</th>
-                    <th style="padding:12px; text-align:center; font-weight:700;">Trend</th>
-                    <th style="padding:12px; text-align:center; font-weight:700;">Games</th>
+                    <th style="padding:12px; text-align:left; font-weight:700;">{{ t.get('domain_col', 'Domain') }}</th>
+                    <th style="padding:12px; text-align:center; font-weight:700;">{{ t.get('score_col', 'Score') }}</th>
+                    <th style="padding:12px; text-align:center; font-weight:700;">{{ t.get('trend_col', 'Trend') }}</th>
+                    <th style="padding:12px; text-align:center; font-weight:700;">{{ t.get('games_col', 'Games') }}</th>
                 </tr>
             </thead>
             <tbody>
@@ -66,18 +80,18 @@
         <div class="card-header">
             <div class="card-icon">📈</div>
             <div>
-                <div class="card-title">Summary</div>
-                <div class="card-subtitle">Overall activity</div>
+                <div class="card-title">{{ t.get('summary_title', 'Summary') }}</div>
+                <div class="card-subtitle">{{ t.get('overall_activity', 'Overall activity') }}</div>
             </div>
         </div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
             <div class="results-stat">
                 <div class="results-stat-value">{{ total_games }}</div>
-                <div class="results-stat-label">Total Games</div>
+                <div class="results-stat-label">{{ t.get('stat_total', 'Total Games') }}</div>
             </div>
             <div class="results-stat">
                 <div class="results-stat-value">{{ avg_accuracy }}%</div>
-                <div class="results-stat-label">Avg Accuracy</div>
+                <div class="results-stat-label">{{ t.get('avg_accuracy_label', 'Avg Accuracy') }}</div>
             </div>
         </div>
     </div>
@@ -87,38 +101,44 @@
         <div class="card-header">
             <div class="card-icon" style="background:var(--accent-light);">💡</div>
             <div>
-                <div class="card-title">Recommendations</div>
-                <div class="card-subtitle">AI-generated insights</div>
+                <div class="card-title">{{ t.get('recommendations_title', 'Recommendations') }}</div>
+                <div class="card-subtitle">{{ t.get('ai_insights', 'AI-generated insights') }}</div>
             </div>
         </div>
         <ul style="list-style:none; padding:0;">
-            {% for domain, data in domain_scores.items() %}
-                {% if data.trend < 0 %}
-                <li style="padding:8px 0; font-size:16px; border-bottom:1px solid var(--border);">
-                    ⚠️ <strong>{{ domain }}</strong> is declining. Consider more {{ domain.lower() }}-focused exercises.
+            {% if total_games == 0 %}
+                <li style="padding:8px 0; font-size:16px;">
+                    💡 {{ t.get('start_playing_prompt', 'Play today\'s routine exercises to generate your personalized AI cognitive insights.') }}
                 </li>
-                {% elif data.trend > 0 %}
-                <li style="padding:8px 0; font-size:16px; border-bottom:1px solid var(--border);">
-                    ✅ <strong>{{ domain }}</strong> is improving — great progress!
-                </li>
-                {% else %}
-                <li style="padding:8px 0; font-size:16px; border-bottom:1px solid var(--border);">
-                    → <strong>{{ domain }}</strong> is stable. Maintain current exercise routine.
+            {% else %}
+                {% for domain, data in domain_scores.items() %}
+                    {% if data.trend < 0 %}
+                    <li style="padding:8px 0; font-size:16px; border-bottom:1px solid var(--border);">
+                        ⚠️ <strong>{{ domain }}</strong> is declining. Consider more {{ domain.lower() }}-focused exercises.
+                    </li>
+                    {% elif data.trend > 0 %}
+                    <li style="padding:8px 0; font-size:16px; border-bottom:1px solid var(--border);">
+                        ✅ <strong>{{ domain }}</strong> is improving — great progress!
+                    </li>
+                    {% else %}
+                    <li style="padding:8px 0; font-size:16px; border-bottom:1px solid var(--border);">
+                        → <strong>{{ domain }}</strong> is stable. Maintain current exercise routine.
+                    </li>
+                    {% endif %}
+                {% endfor %}
+                {% if avg_accuracy < 50 %}
+                <li style="padding:8px 0; font-size:16px;">
+                    🩺 <strong>Low overall accuracy.</strong> Consider scheduling a professional cognitive assessment.
                 </li>
                 {% endif %}
-            {% endfor %}
-            {% if avg_accuracy < 50 %}
-            <li style="padding:8px 0; font-size:16px;">
-                🩺 <strong>Low overall accuracy.</strong> Consider scheduling a professional cognitive assessment.
-            </li>
             {% endif %}
         </ul>
     </div>
 
     <!-- Actions -->
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-        <button class="btn-primary" onclick="window.print()">📥 Print / Save PDF</button>
-        <button class="btn-secondary" onclick="emailReport()">📧 Email to Doctor</button>
+        <button class="btn-primary" onclick="window.print()">{{ t.get('print_report', '📥 Print / Save PDF') }}</button>
+        <button class="btn-secondary" onclick="emailReport()">{{ t.get('email_doctor', '📧 Email to Doctor') }}</button>
     </div>
 </div>
 {% endblock %}

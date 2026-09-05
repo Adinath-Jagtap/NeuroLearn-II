@@ -6,6 +6,7 @@
     {% if linked_patient_id %}
     <p class="cg-patient-info">
         Patient: <strong>{{ patient_name }}</strong> | 
+        {% if patient_code %}Patient Code: <strong style="font-family:monospace; background:rgba(255,255,255,0.85); padding:4px 10px; border-radius:6px; letter-spacing:2px; font-size:16px; border:1.5px solid var(--border); color:var(--primary-dark);" id="hdr-patient-code">{{ patient_code }}</strong> | {% endif %}
         Stage: <strong>{{ profile.get('dementia_stage', 'N/A') | capitalize }}</strong> |
         Age: <strong>{{ profile.get('age', 'N/A') }}</strong>
     </p>
@@ -114,10 +115,17 @@
             ✅ Patient account created!
         </p>
         <div style="display:grid; gap:12px;">
-            <div style="background:white; border-radius:12px; padding:16px; text-align:center;">
-                <div style="font-size:14px; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">4-Digit Patient PIN</div>
-                <div id="result-pin" style="font-size:56px; font-weight:900; letter-spacing:12px; color:var(--primary); font-family:monospace;"></div>
-                <div style="font-size:14px; color:var(--text-muted); margin-top:8px;">📋 Write this down and give it to your patient</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                <div style="background:white; border-radius:12px; padding:16px; text-align:center;">
+                    <div style="font-size:14px; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">{{ t['patient_id_label'] }}</div>
+                    <div id="result-patient-code" style="font-size:36px; font-weight:900; letter-spacing:6px; color:var(--text-primary); font-family:monospace;"></div>
+                    <div style="font-size:13px; color:var(--text-muted); margin-top:6px;">🔑 Required for Patient PIN Login</div>
+                </div>
+                <div style="background:white; border-radius:12px; padding:16px; text-align:center;">
+                    <div style="font-size:14px; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">4-Digit Patient PIN</div>
+                    <div id="result-pin" style="font-size:36px; font-weight:900; letter-spacing:8px; color:var(--primary); font-family:monospace;"></div>
+                    <div style="font-size:13px; color:var(--text-muted); margin-top:6px;">📋 Write this down for your patient</div>
+                </div>
             </div>
             <div style="background:white; border-radius:12px; padding:16px;">
                 <div style="font-size:14px; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">Patient Invite Link</div>
@@ -459,20 +467,38 @@
             </div>
         </div>
 
-        <div style="display:flex; flex-direction:column; gap:16px; margin-top:12px;">
-            <!-- Patient PIN Display -->
-            <div style="padding:20px; background:var(--primary-light); border:2.5px solid var(--primary); border-radius:var(--radius-md); text-align:center;">
-                <div style="font-size:14px; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">
-                    Patient's 4-Digit PIN
+            <!-- Patient Credentials Dual Card: Patient Code & PIN -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+                <!-- Patient Code -->
+                <div style="padding:20px; background:var(--bg-card); border:2.5px solid var(--border); border-radius:var(--radius-md); text-align:center;">
+                    <div style="font-size:14px; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">
+                        {{ t['patient_id_label'] }}
+                    </div>
+                    <div id="patient-code-display" style="font-size:38px; font-weight:900; letter-spacing:6px; color:var(--text-primary); font-family:monospace;">
+                        {{ patient_code or 'LOADING...' }}
+                    </div>
+                    <button onclick="copyPatientCode()" class="btn-secondary" style="font-size:14px; padding:8px 20px; min-height:auto; margin-top:10px;" id="copy-code-btn">
+                        📋 Copy Code
+                    </button>
+                    <div style="font-size:13px; color:var(--text-muted); margin-top:8px;">
+                        Unique code required for Patient PIN Login &amp; Doctor Linking.
+                    </div>
                 </div>
-                <div id="patient-pin-display" style="font-size:52px; font-weight:900; letter-spacing:16px; color:var(--primary); font-family:monospace; cursor:pointer;" onclick="togglePIN()" title="Click to reveal/hide">
-                    ●●●●
-                </div>
-                <button onclick="togglePIN()" class="btn-secondary" style="font-size:14px; padding:8px 20px; min-height:auto; margin-top:10px;">
-                    👁️ Reveal / Hide PIN
-                </button>
-                <div style="font-size:13px; color:var(--text-muted); margin-top:8px;">
-                    Write this PIN and give it to {{ patient_name }}. They use it to log in via the invite link.
+
+                <!-- Patient PIN Display -->
+                <div style="padding:20px; background:var(--primary-light); border:2.5px solid var(--primary); border-radius:var(--radius-md); text-align:center;">
+                    <div style="font-size:14px; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">
+                        Patient's 4-Digit PIN
+                    </div>
+                    <div id="patient-pin-display" style="font-size:38px; font-weight:900; letter-spacing:12px; color:var(--primary); font-family:monospace; cursor:pointer;" onclick="togglePIN()" title="Click to reveal/hide">
+                        ●●●●
+                    </div>
+                    <button onclick="togglePIN()" class="btn-secondary" style="font-size:14px; padding:8px 20px; min-height:auto; margin-top:10px;">
+                        👁️ Reveal / Hide PIN
+                    </button>
+                    <div style="font-size:13px; color:var(--text-muted); margin-top:8px;">
+                        Write this down and give it to {{ patient_name }}.
+                    </div>
                 </div>
             </div>
 
@@ -555,10 +581,30 @@ async function loadPatientPIN() {
     try {
         const r = await fetch('/api/patient-pin');
         const data = await r.json();
-        if (data.success && data.pin) {
-            patientPIN = data.pin;
+        if (data.success) {
+            if (data.pin) patientPIN = data.pin;
+            if (data.patient_code) {
+                const codeEl = document.getElementById('patient-code-display');
+                if (codeEl) codeEl.textContent = data.patient_code;
+                const hdrCodeEl = document.getElementById('hdr-patient-code');
+                if (hdrCodeEl) hdrCodeEl.textContent = data.patient_code;
+            }
         }
     } catch(e) {}
+}
+
+function copyPatientCode() {
+    const codeEl = document.getElementById('patient-code-display');
+    if (!codeEl) return;
+    const text = codeEl.textContent.trim();
+    navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById('copy-code-btn');
+        if (btn) {
+            const orig = btn.textContent;
+            btn.textContent = '✅ Copied!';
+            setTimeout(() => { btn.textContent = orig; }, 2000);
+        }
+    });
 }
 
 function togglePIN() {
@@ -1200,6 +1246,9 @@ async function addPatient() {
             // Show result
             document.getElementById('add-patient-form').style.display = 'none';
             document.getElementById('result-pin').textContent = data.pin;
+            if (document.getElementById('result-patient-code')) {
+                document.getElementById('result-patient-code').textContent = data.patient_code || 'N/A';
+            }
             document.getElementById('result-invite-link').value = data.invite_link;
             document.getElementById('patient-added-result').style.display = 'block';
 

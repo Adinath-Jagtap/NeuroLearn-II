@@ -93,21 +93,53 @@ class NeuroLearnQuizManager {
 
         const btnVoice = document.getElementById('btn-voice');
         if (btnVoice) {
-            if ('webkitSpeechRecognition' in window) {
-                const recognition = new webkitSpeechRecognition();
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (SpeechRecognition) {
+                const recognition = new SpeechRecognition();
                 recognition.continuous = false;
                 recognition.interimResults = false;
-                recognition.lang = 'en-US';
+                
+                const docLang = (document.documentElement.lang || 'en').toLowerCase();
+                const langMap = {
+                    'hi': 'hi-IN',
+                    'mr': 'mr-IN',
+                    'bn': 'bn-IN',
+                    'as': 'bn-IN',
+                    'mni': 'bn-IN',
+                    'ta': 'ta-IN',
+                    'en': 'en-IN'
+                };
+                recognition.lang = langMap[docLang] || 'en-IN';
 
                 btnVoice.onclick = () => {
-                    recognition.start();
-                    btnVoice.classList.add('bg-sky-100', 'animate-pulse');
+                    if ('speechSynthesis' in window) {
+                        speechSynthesis.cancel();
+                    }
+                    try {
+                        recognition.start();
+                        btnVoice.classList.add('bg-sky-100', 'animate-pulse');
+                    } catch(err) {
+                        console.warn('Quiz recognition start error:', err);
+                    }
                 };
 
                 recognition.onresult = (e) => {
                     const text = e.results[0][0].transcript.toLowerCase();
                     btnVoice.classList.remove('bg-sky-100', 'animate-pulse');
                     this.handleVoiceCommand(text);
+                };
+
+                recognition.onend = () => {
+                    btnVoice.classList.remove('bg-sky-100', 'animate-pulse');
+                };
+
+                recognition.onerror = (e) => {
+                    console.warn('Quiz recognition error:', e.error);
+                    if (e.error === 'language-not-supported' && recognition.lang !== 'en-IN') {
+                        recognition.lang = 'en-IN';
+                        try { recognition.start(); return; } catch(err) {}
+                    }
+                    btnVoice.classList.remove('bg-sky-100', 'animate-pulse');
                 };
             } else {
                 btnVoice.style.display = 'none';
@@ -117,13 +149,31 @@ class NeuroLearnQuizManager {
 
     handleVoiceCommand(text) {
         if (!this.optionsContainer) return;
-        const cards = this.optionsContainer.querySelectorAll('.answer-card');
-        cards.forEach((card, i) => {
-            const optLetter = String.fromCharCode(65 + i).toLowerCase();
-            if (text.includes(`option ${optLetter}`) || text.includes(`choice ${optLetter}`) || text.includes(optLetter)) {
+        const cards = Array.from(this.optionsContainer.querySelectorAll('.answer-card'));
+        if (!cards.length) return;
+        
+        const t = (text || '').trim().toLowerCase();
+        
+        // Ordinal / number matches
+        let matchIdx = -1;
+        if (/[1১१]/.test(t) || /(^|\s)(one|first|1st|option 1|option a|choice a|এক|প্ৰথম|১ম|पहला)(\s|$)/i.test(t)) matchIdx = 0;
+        else if (/[2২२]/.test(t) || /(^|\s)(two|second|2nd|option 2|option b|choice b|দুই|দ্বিতীয়|২য়|दूसरा)(\s|$)/i.test(t)) matchIdx = 1;
+        else if (/[3৩३]/.test(t) || /(^|\s)(three|third|3rd|option 3|option c|choice c|তিনি|তিন|তৃতীয়|৩য়|तीसरा)(\s|$)/i.test(t)) matchIdx = 2;
+        else if (/[4৪४]/.test(t) || /(^|\s)(four|fourth|4th|option 4|option d|choice d|চাৰি|চার|চতুৰ্থ|৪ৰ্থ|चौथा)(\s|$)/i.test(t)) matchIdx = 3;
+        
+        if (matchIdx >= 0 && cards[matchIdx]) {
+            cards[matchIdx].click();
+            return;
+        }
+        
+        // Match by card text content
+        for (const card of cards) {
+            const cardText = card.textContent.trim().toLowerCase();
+            if (cardText && (cardText === t || t.includes(cardText) || (cardText.length >= 3 && cardText.includes(t)))) {
                 card.click();
+                return;
             }
-        });
+        }
     }
 
     renderQuestion() {

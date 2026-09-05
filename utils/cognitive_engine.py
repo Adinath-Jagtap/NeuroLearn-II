@@ -209,19 +209,72 @@ def generate_recognition_game(difficulty="easy", language="en", family_photos=No
         random.shuffle(items)
         items = items[:min(8, len(items))]
     
-    # --- FALLBACK: GENERIC CONTENT ---
-    if len(items) < 3:
-        easy_items = [
-            {"mode": "name_text", "image_desc": "An elderly woman smiling warmly", "correct": "Grandmother", "options": ["Grandmother", "Mother", "Aunt", "Sister"], "category": "family"},
-            {"mode": "name_text", "image_desc": "A young man in a formal shirt", "correct": "Son", "options": ["Son", "Brother", "Father", "Grandson"], "category": "family"},
-            {"mode": "name_text", "image_desc": "A small girl with braids", "correct": "Granddaughter", "options": ["Granddaughter", "Daughter", "Niece", "Sister"], "category": "family"},
-            {"mode": "name_text", "image_desc": "A traditional clay lamp (diya)", "correct": "Diya", "options": ["Diya", "Candle", "Lantern", "Torch"], "category": "cultural"},
-            {"mode": "name_text", "image_desc": "A plate of traditional laddoos", "correct": "Laddoo", "options": ["Laddoo", "Rasgulla", "Gulab Jamun", "Jalebi"], "category": "food"},
-            {"mode": "name_text", "image_desc": "A red-and-white Assamese Gamosa", "correct": "Gamosa", "options": ["Gamosa", "Dupatta", "Shawl", "Towel"], "category": "cultural"},
+    # --- FALLBACK: GENERIC CONTENT (Multilingual) ---
+    FALLBACK_RECOG_ITEMS = {
+        "en": [
+            {"mode": "name_text", "image_desc": "An elderly grandmother smiling warmly", "correct": "Grandmother", "options": ["Grandmother", "Mother", "Aunt", "Sister"], "category": "family"},
+            {"mode": "name_text", "image_desc": "A young smiling son", "correct": "Son", "options": ["Son", "Brother", "Father", "Grandson"], "category": "family"},
+            {"mode": "name_text", "image_desc": "A little granddaughter", "correct": "Granddaughter", "options": ["Granddaughter", "Daughter", "Niece", "Sister"], "category": "family"},
+            {"mode": "name_text", "image_desc": "A traditional clay diya", "correct": "Diya", "options": ["Diya", "Candle", "Lantern", "Torch"], "category": "cultural"},
+            {"mode": "name_text", "image_desc": "A plate of delicious laddoos", "correct": "Laddoo", "options": ["Laddoo", "Rasgulla", "Gulab Jamun", "Jalebi"], "category": "food"},
+            {"mode": "name_text", "image_desc": "An Assamese red and white Gamosa", "correct": "Gamosa", "options": ["Gamosa", "Dupatta", "Shawl", "Towel"], "category": "cultural"},
             {"mode": "name_text", "image_desc": "People performing Bihu dance", "correct": "Bihu Dance", "options": ["Bihu Dance", "Garba", "Bhangra", "Kathak"], "category": "cultural"},
-            {"mode": "name_text", "image_desc": "A one-horned rhino in Kaziranga", "correct": "Rhino", "options": ["Rhino", "Elephant", "Buffalo", "Hippo"], "category": "cultural"},
-        ]
-        
+            {"mode": "name_text", "image_desc": "A magnificent one-horned rhino", "correct": "Rhino", "options": ["Rhino", "Elephant", "Buffalo", "Tiger"], "category": "cultural"},
+        ],
+        "hi": [
+            {"mode": "name_text", "image_desc": "मुस्कुराती हुई बुजुर्ग दादी / नानी", "correct": "दादी / नानी", "options": ["दादी / नानी", "माँ", "मौसी / चाची", "बहन"], "category": "family"},
+            {"mode": "name_text", "image_desc": "मुस्कुराता हुआ नौजवान बेटा", "correct": "बेटा", "options": ["बेटा", "भाई", "पिता", "पोता"], "category": "family"},
+            {"mode": "name_text", "image_desc": "प्यारी सी नन्हीं पोती / नातिन", "correct": "पोती / नातिन", "options": ["पोती / नातिन", "बेटी", "भांजी / भतीजी", "बहन"], "category": "family"},
+            {"mode": "name_text", "image_desc": "पारंपरिक मिट्टी का दीया", "correct": "दीया", "options": ["दीया", "मोमबत्ती", "लालटेन", "मशाल"], "category": "cultural"},
+            {"mode": "name_text", "image_desc": "स्वादिष्ट गोल लड्डू की थाली", "correct": "लड्डू", "options": ["लड्डू", "रसगुल्ला", "गुलाब जामुन", "जलेबी"], "category": "food"},
+            {"mode": "name_text", "image_desc": "लाल और सफेद असमिया गमोसा", "correct": "गमोसा", "options": ["गमोसा", "दुपट्टा", "शॉल", "तौलिया"], "category": "cultural"},
+            {"mode": "name_text", "image_desc": "पारंपरिक बिहू नृत्य", "correct": "बिहू नृत्य", "options": ["बिहू नृत्य", "गरबा", "भांगड़ा", "कथक"], "category": "cultural"},
+            {"mode": "name_text", "image_desc": "काजीरंगा का एक सींग वाला गैंडा", "correct": "गैंडा", "options": ["गैंडा", "हाथी", "भैंस", "बाघ"], "category": "cultural"},
+        ],
+        "as": [
+            {"mode": "name_text", "image_desc": "মৰমিয়াল হাঁহিমুখীয়া আইতা", "correct": "আইতা", "options": ["আইতা", "মা", "খুড়ী", "ভনী"], "category": "family"},
+            {"mode": "name_text", "image_desc": "এজন মৰমৰ ডেকা ল'ৰা বা পুত্ৰ", "correct": "পুত্ৰ", "options": ["পুত্ৰ", "ভাই-ককাই", "দেউতা", "নাতি"], "category": "family"},
+            {"mode": "name_text", "image_desc": "এজনী মৰমলগা সৰু নাতিনী", "correct": "নাতিনী", "options": ["নাতিনী", "জীয়াৰী", "ভাগিনী", "ভনী"], "category": "family"},
+            {"mode": "name_text", "image_desc": "মাটিৰ পৰম্পৰাগত চাকি", "correct": "চাকি", "options": ["চাকি", "মমবাতি", "লেম্প", "মশাল"], "category": "cultural"},
+            {"mode": "name_text", "image_desc": "স্বাদভৰা লাড়ুৰ কাঁহী", "correct": "লাড়ু", "options": ["লাড়ু", "ৰসগোল্লা", "গুলাব জামুন", "জিলেপী"], "category": "food"},
+            {"mode": "name_text", "image_desc": "অসমৰ ঐতিহ্যবাহী ফুলাম গামোচা", "correct": "গামোচা", "options": ["গামোচা", "চেলেং", "শাল", "কাপোৰ"], "category": "cultural"},
+            {"mode": "name_text", "image_desc": "আনন্দমুখৰ বিহু নৃত্য", "correct": "বিহু নৃত্য", "options": ["বিহু নৃত্য", "গৰবা", "ভাংৰা", "ঝুমুৰ"], "category": "cultural"},
+            {"mode": "name_text", "image_desc": "কাজিৰঙাৰ এটা খড়্গযুক্ত গঁড়", "correct": "গঁড়", "options": ["গঁড়", "হাতী", "ম'হ", "বাঘ"], "category": "cultural"},
+        ],
+        "bn": [
+            {"mode": "name_text", "image_desc": "স্নেহময়ী হাসিমুখ ঠাকুমা / দিদিমা", "correct": "ঠাকুমা / দিদিমা", "options": ["ঠাকুমা / দিদিমা", "মা", "মাসিমা / পিসিমা", "বোন"], "category": "family"},
+            {"mode": "name_text", "image_desc": "এক তরুণ ছেলে বা পুত্র", "correct": "ছেলে / পুত্র", "options": ["ছেলে / পুত্র", "ভাই", "বাবা", "নাতি"], "category": "family"},
+            {"mode": "name_text", "image_desc": "একটি মিষ্টি ছোট্ট নাতনি", "correct": "নাতনি", "options": ["নাতনি", "মেয়ে / কন্যা", "ভাগ্নি", "বোন"], "category": "family"},
+            {"mode": "name_text", "image_desc": "ঐতিহ্যবাহী মাটির প্রদীপ বা দিয়া", "correct": "প্রদীপ / দিয়া", "options": ["প্রদীপ / দিয়া", "মোমবাতি", "লণ্ঠন", "মশাল"], "category": "cultural"},
+            {"mode": "name_text", "image_desc": "এক থালা সুস্বাদু মিষ্টি লাড্ডু", "correct": "লাড্ডু", "options": ["লাড্ডু", "রসগোল্লা", "গোলাপ জাম", "জিলিপি"], "category": "food"},
+            {"mode": "name_text", "image_desc": "ঐতিহ্যবাহী লাল-সাদা গামোছা", "correct": "গামোছা", "options": ["গামোছা", "দোপাট্টা", "শাল", "তোয়ালে"], "category": "cultural"},
+            {"mode": "name_text", "image_desc": "ঐতিহ্যবাহী বিহু নাচ", "correct": "বিহু নাচ", "options": ["বিহু নাচ", "গরবা", "ভাংড়া", "কথক"], "category": "cultural"},
+            {"mode": "name_text", "image_desc": "কাজিরাঙ্গার একশৃঙ্গ গণ্ডার", "correct": "গণ্ডার", "options": ["গণ্ডার", "হাতি", "মহিষ", "বাঘ"], "category": "cultural"},
+        ],
+        "mni": [
+            {"mode": "name_text", "image_desc": "হরাওনা নোংবা ইবেম্মোক", "correct": "ইবেম্মোক", "options": ["ইবেম্মোক", "ইমা", "ইনে", "ইচেন"], "category": "family"},
+            {"mode": "name_text", "image_desc": "নৌনা নোংবা মচানুপা", "correct": "মচানুপা", "options": ["মচানুপা", "ইচিল-ইনাও", "ইপা", "ইশু"], "category": "family"},
+            {"mode": "name_text", "image_desc": "মচানুপী অঙাং", "correct": "ইশুনুপী", "options": ["ইশুনুপী", "মচানুপী", "ইচে", "ইচল"], "category": "family"},
+            {"mode": "name_text", "image_desc": "লৈপাক্কী থাউমৈ", "correct": "থাউমৈ", "options": ["থাউমৈ", "মোমবাতি", "লন্তর্ন", "মৈৰা"], "category": "cultural"},
+            {"mode": "name_text", "image_desc": "থুম্বা লদ্দু থাবা পুখাম", "correct": "লদ্দু", "options": ["লদ্দু", "রসগোল্লা", "গুলাব জামুন", "জিলেবী"], "category": "food"},
+            {"mode": "name_text", "image_desc": "গামোছা ফি", "correct": "গামোছা", "options": ["গামোছা", "ইন্নাফি", "শাল", "খোদাংফি"], "category": "cultural"},
+            {"mode": "name_text", "image_desc": "বিহু জগোই", "correct": "বিহু জগোই", "options": ["বিহু জগোই", "গরবা", "ভাংড়া", "থাং-তা"], "category": "cultural"},
+            {"mode": "name_text", "image_desc": "কাযিরঙ্গাগী সমাল য়াবা গেন্দা", "correct": "গেন্দা", "options": ["গেন্দা", "সমু", "ইরোই", "কেই"], "category": "cultural"},
+        ],
+        "mr": [
+            {"mode": "name_text", "image_desc": "हसमुख वृद्ध आजी", "correct": "आजी", "options": ["आजी", "आई", "काकू / मावशी", "बहीण"], "category": "family"},
+            {"mode": "name_text", "image_desc": "आनंदी तरुण मुलगा", "correct": "मुलगा", "options": ["मुलगा", "भाऊ", "वडील", "नातू"], "category": "family"},
+            {"mode": "name_text", "image_desc": "गोड लहान नात", "correct": "नात", "options": ["नात", "मुलगी", "भाची", "बहीण"], "category": "family"},
+            {"mode": "name_text", "image_desc": "पारंपरिक मातीची पणती / दिवा", "correct": "दिवा / पणती", "options": ["दिवा / पणती", "मेणबत्ती", "कंदील", "मशाल"], "category": "cultural"},
+            {"mode": "name_text", "image_desc": "स्वादिष्ट लाडवांचे ताट", "correct": "लाडू", "options": ["लाडू", "रसगुल्ला", "गुलाबजाम", "जिलबी"], "category": "food"},
+            {"mode": "name_text", "image_desc": "पारंपरिक लाल-पांढरा गमोसा", "correct": "गमोसा", "options": ["गमोसा", "दुपट्टा", "शाल", "टॉवेल"], "category": "cultural"},
+            {"mode": "name_text", "image_desc": "पारंपरिक बिहू नृत्य", "correct": "बिहू नृत्य", "options": ["बिहू नृत्य", "गरबा", "भांगडा", "लावणी"], "category": "cultural"},
+            {"mode": "name_text", "image_desc": "काझीरंगाचा एकशिंगी गेंडा", "correct": "गेंडा", "options": ["गेंडा", "हत्ती", "रेडा / म्हैस", "वाघ"], "category": "cultural"},
+        ],
+    }
+    
+    if len(items) < 3:
+        easy_items = FALLBACK_RECOG_ITEMS.get(language, FALLBACK_RECOG_ITEMS["en"])
         count = max(5, 5 - len(items))
         generic_items = random.sample(easy_items, min(count, len(easy_items)))
         for item in generic_items:
@@ -411,21 +464,122 @@ def get_adaptive_difficulty(game_history):
         return "easy"
 
 
-def get_daily_routine():
-    """Get today's exercise schedule — NE India themed games."""
-    import datetime
-    hour = datetime.datetime.now().hour
+ROUTINE_I18N = {
+    "en": {
+        "morning_time": "🌅 Morning",
+        "recog_title": "Mukh Chinibo — Who Is This?",
+        "recog_desc": "Recognize family members and loved ones",
+        "afternoon_time": "☀️ Afternoon",
+        "pattern_title": "Bihu Rang — Pattern Recall",
+        "pattern_desc": "Remember NE India motifs in the right order",
+        "anytime": "🐯 Anytime",
+        "bagh_title": "Bagh-Baak — Tiger Hunt",
+        "bagh_desc": "Strategic board game — trap the tiger!",
+        "comp_time": "💬 Anytime",
+        "comp_title": "Talk to Companion",
+        "comp_desc": "Chat about memories, family, and life",
+        "dur_5": "5 min", "dur_8": "8 min", "dur_10": "10 min"
+    },
+    "hi": {
+        "morning_time": "🌅 सुबह",
+        "recog_title": "मुख चिनिबो — यह कौन है?",
+        "recog_desc": "परिवार के सदस्यों और प्रियजनों को पहचानें",
+        "afternoon_time": "☀️ दोपहर",
+        "pattern_title": "बिहू रंग — याद करो",
+        "pattern_desc": "पूर्वोत्तर भारत के प्रतीकों को सही क्रम में याद रखें",
+        "anytime": "🐯 कभी भी",
+        "bagh_title": "बाघ-बाक — बाघ का शिकार",
+        "bagh_desc": "रणनीतिक खेल — बाघ को घेरें!",
+        "comp_time": "💬 कभी भी",
+        "comp_title": "स्मृति साथी से बात करें",
+        "comp_desc": "पुरानी यादों, परिवार और जीवन के बारे में बातचीत",
+        "dur_5": "5 मिनट", "dur_8": "8 मिनट", "dur_10": "10 मिनट"
+    },
+    "as": {
+        "morning_time": "🌅 ৰাতিপুৱা",
+        "recog_title": "মুখ চিনিবো — এয়া কোন?",
+        "recog_desc": "পৰিয়ালৰ সদস্য আৰু আপোনজনক চিনাক্ত কৰক",
+        "afternoon_time": "☀️ দুপৰীয়া",
+        "pattern_title": "বিহু ৰং — মনত ৰাখক",
+        "pattern_desc": "উত্তৰ-পূবৰ প্ৰতীকসমূহ সঠিক ক্ৰমত মনত ৰাখক",
+        "anytime": "🐯 যিকোনো সময়ত",
+        "bagh_title": "বাঘ-বাক — বাঘ চিকাৰ",
+        "bagh_desc": "কৌশলী খেল — বাঘক আৱৰি ধৰক!",
+        "comp_time": "💬 যিকোনো সময়ত",
+        "comp_title": "সংগীৰ সৈতে কথা পাতক",
+        "comp_desc": "পুৰণি স্মৃতি, পৰিয়াল আৰু জীৱনৰ কথা পাতক",
+        "dur_5": "৫ মিনিট", "dur_8": "৮ মিনিট", "dur_10": "১০ মিনিট"
+    },
+    "bn": {
+        "morning_time": "🌅 সকাল",
+        "recog_title": "মুখ চিনিবো — এটা কে?",
+        "recog_desc": "পরিবারের সদস্য ও প্রিয়জনদের চিনুন",
+        "afternoon_time": "☀️ দুপুর",
+        "pattern_title": "বিহু রং — মনে রাখো",
+        "pattern_desc": "উত্তর-পূর্ব ভারতের প্রতীকগুলো সঠিক ক্রমে মনে রাখুন",
+        "anytime": "🐯 যেকোনো সময়",
+        "bagh_title": "বাঘ-বাক — বাঘ শিকার",
+        "bagh_desc": "কৌশলী খেলা — বাঘকে ফাঁদে ফেলুন!",
+        "comp_time": "💬 যেকোনো সময়",
+        "comp_title": "স্মৃতি সঙ্গীর সাথে কথা বলুন",
+        "comp_desc": "পুরোনো স্মৃতি, পরিবার ও জীবনের গল্প করুন",
+        "dur_5": "৫ মিনিট", "dur_8": "৮ মিনিট", "dur_10": "১০ মিনিট"
+    },
+    "mni": {
+        "morning_time": "🌅 অয়ুক",
+        "recog_title": "মুখ চিনিবো — মসি কনানো?",
+        "recog_desc": "ইমুং-মনুংগী মীশিংবু মশক খঙদোকউ",
+        "afternoon_time": "☀️ নুমিৎ থাংবা",
+        "pattern_title": "বিহু রং — নীংশিংবিয়ু",
+        "pattern_desc": "মটিফশিং অচুম্বা পরিংদা নীংশিংবিয়ু",
+        "anytime": "🐯 মতম চুপ্পদা",
+        "bagh_title": "বাঘ-বাক — কেই তানবা",
+        "bagh_desc": "কৌশলী শান্নবা — কেইবু ফাবিয়ু!",
+        "comp_time": "💬 মতম চুপ্পদা",
+        "comp_title": "মরুপকা ৱারী শানবিয়ু",
+        "comp_desc": "নীংশিংবা ৱাফমশিং অমসুং পুন্সিগী ৱারী শানবিয়ু",
+        "dur_5": "৫ মিনিট", "dur_8": "৮ মিনিট", "dur_10": "১০ মিনিট"
+    },
+    "mr": {
+        "morning_time": "🌅 सकाळ",
+        "recog_title": "मुख चिनिबो — हे कोण?",
+        "recog_desc": "कुटुंबातील व्यक्ती आणि आप्तेष्टांना ओळखा",
+        "afternoon_time": "☀️ दुपार",
+        "pattern_title": "बिहू रंग — लक्षात ठेवा",
+        "pattern_desc": "ईशान्य भारतातील चिन्हे योग्य क्रमाने लक्षात ठेवा",
+        "anytime": "🐯 केव्हाही",
+        "bagh_title": "वाघ-बकरी — वाघाची शिकार",
+        "bagh_desc": "रणनीतीचा खेळ — वाघाला घेरून पकडा!",
+        "comp_time": "💬 केव्हाही",
+        "comp_title": "साथीदाराशी गप्पा मारा",
+        "comp_desc": "आठवणी, कुटुंब आणि गप्पांचा आनंद घ्या",
+        "dur_5": "५ मिनिटे", "dur_8": "८ मिनिटे", "dur_10": "१० मिनिटे"
+    },
+}
+
+
+def get_daily_routine(language="en"):
+    """Get today's exercise schedule — NE India themed games, fully localized."""
+    lang_code = (language or "en").lower().strip()[:3]
+    if lang_code.startswith("mn"): lang_code = "mni"
+    elif lang_code.startswith("as"): lang_code = "as"
+    elif lang_code.startswith("bn"): lang_code = "bn"
+    elif lang_code.startswith("hi"): lang_code = "hi"
+    elif lang_code.startswith("mr"): lang_code = "mr"
+    else: lang_code = "en"
+
+    txt = ROUTINE_I18N.get(lang_code, ROUTINE_I18N["en"])
     
     routine = []
     
     # Morning: Face recognition
     routine.append({
         "id": "morning",
-        "time_label": "🌅 Morning",
+        "time_label": txt["morning_time"],
         "game_type": "recognition",
-        "title": "Mukh Chinibo — Who Is This?",
-        "description": "Recognize family members and loved ones",
-        "duration": "5 min",
+        "title": txt["recog_title"],
+        "description": txt["recog_desc"],
+        "duration": txt["dur_5"],
         "icon": "👤",
         "available": True,
         "completed": False
@@ -434,11 +588,11 @@ def get_daily_routine():
     # Afternoon: Bihu Rang pattern memory
     routine.append({
         "id": "afternoon",
-        "time_label": "☀️ Afternoon",
+        "time_label": txt["afternoon_time"],
         "game_type": "pattern",
-        "title": "Bihu Rang — Pattern Recall",
-        "description": "Remember NE India motifs in the right order",
-        "duration": "8 min",
+        "title": txt["pattern_title"],
+        "description": txt["pattern_desc"],
+        "duration": txt["dur_8"],
         "icon": "🎨",
         "available": True,
         "completed": False
@@ -447,11 +601,11 @@ def get_daily_routine():
     # Anytime: Bagh-Baak strategy (available always, not evening-locked)
     routine.append({
         "id": "bagh",
-        "time_label": "🐯 Anytime",
+        "time_label": txt["anytime"],
         "game_type": "bagh-baak",
-        "title": "Bagh-Baak — Tiger Hunt",
-        "description": "Strategic board game — trap the tiger!",
-        "duration": "10 min",
+        "title": txt["bagh_title"],
+        "description": txt["bagh_desc"],
+        "duration": txt["dur_10"],
         "icon": "🐯",
         "available": True,
         "completed": False
@@ -460,11 +614,11 @@ def get_daily_routine():
     # Anytime companion
     routine.append({
         "id": "companion",
-        "time_label": "💬 Anytime",
+        "time_label": txt["comp_time"],
         "game_type": "companion",
-        "title": "Talk to Companion",
-        "description": "Chat about memories, family, and life",
-        "duration": "10 min",
+        "title": txt["comp_title"],
+        "description": txt["comp_desc"],
+        "duration": txt["dur_10"],
         "icon": "🤖",
         "available": True,
         "completed": False

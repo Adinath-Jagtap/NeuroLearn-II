@@ -14,7 +14,7 @@
                 Please ask your caregiver for a new link.
             </p>
             <a href="/login-pin" class="btn-primary" style="display:inline-block; padding:16px 32px; text-decoration:none; font-size:18px;">
-                🔑 Patient PIN Login Instead
+                🔑 {{ t['pin_login'] }}
             </a>
         </div>
 
@@ -23,7 +23,7 @@
         <div style="text-align:center; margin-bottom:28px;">
             <div style="font-size:72px; margin-bottom:8px;">👴</div>
             <h1 class="auth-title" style="font-size:28px;">
-                Welcome{% if patient_name %}, {{ patient_name }}{% endif %}!
+                {{ t['hello'] }}{% if patient_name %}, {{ patient_name }}{% endif %}!
             </h1>
             <p style="font-size:17px; color:var(--text-secondary); line-height:1.6; margin-top:8px;">
                 {% if caregiver_name %}
@@ -31,8 +31,11 @@
                 {% else %}
                     Your caregiver has set up your NeuroLearn account.
                 {% endif %}
-                <br>Enter your <strong>4-digit PIN</strong> to get started.
+                <br>{{ t['patient_login_sub'] }}
             </p>
+            <button type="button" class="btn-tts-hero" onclick="speakText('{{ t['hello'] | escape }}! {{ t['patient_login_sub'] | escape }}', '{{ current_language }}')" style="font-size:13px; padding:6px 14px; margin-top:8px;">
+                <i class="fas fa-volume-up"></i> {{ t['hear_page'] }}
+            </button>
         </div>
 
         {% if error %}
@@ -44,7 +47,7 @@
         <form method="POST" action="/join/{{ token }}">
             <div class="form-group">
                 <label class="form-label" style="font-size:20px; font-weight:800; text-align:center; display:block; margin-bottom:16px;">
-                    🔐 Your 4-Digit PIN
+                    🔐 {{ t['four_digit_pin'] }}
                 </label>
                 <!-- Big PIN input boxes -->
                 <div style="display:flex; gap:12px; justify-content:center; margin-bottom:24px;" id="pin-boxes">
@@ -70,12 +73,12 @@
             </div>
 
             <button type="submit" class="btn-primary btn-big" id="submit-btn" onclick="combinePIN()">
-                ✅ ENTER &amp; START GAMES
+                ✅ {{ t['start'] }}
             </button>
         </form>
 
         <p style="text-align:center; margin-top:20px; font-size:15px; color:var(--text-muted);">
-            Don't remember your PIN? Ask your caregiver to check the <strong>Caregiver Dashboard</strong>.
+            {{ t['ask_caregiver_pin'] }}
         </p>
         {% endif %}
     </div>

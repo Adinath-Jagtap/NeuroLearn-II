@@ -3,10 +3,10 @@
 {% block content %}
 <div class="game-container">
     <div class="game-header">
-        <h1 class="game-title" id="game-title">Loading...</h1>
+        <h1 class="game-title" id="game-title">{{ t.get('loading_game', 'Loading game...') }}</h1>
         <p class="game-instruction" id="game-instruction"></p>
         <button class="btn-tts-hero mt-16" onclick="readInstruction()" style="font-size:14px; padding:8px 16px;">
-            <i class="fas fa-volume-up"></i> Read Aloud
+            <i class="fas fa-volume-up"></i> {{ t.get('btn_read_aloud', 'Read Aloud') }}
         </button>
     </div>
 
@@ -19,14 +19,15 @@
 
     <div class="game-area" id="game-area">
         <div class="loading-spinner"></div>
-        <p class="loading-text">Loading game...</p>
+        <p class="loading-text">{{ t.get('loading_game', 'Loading game...') }}</p>
     </div>
 
     <!-- Voice Control -->
-    <button class="voice-btn" id="voice-btn" onclick="toggleVoice()" title="Speak your answer" style="display:none;">
+    <button class="voice-btn" id="voice-btn" onclick="toggleVoice()" title="{{ t.get('speak_answer_prompt', 'Speak your answer') }}" style="display:none;">
         <i class="fas fa-microphone"></i>
     </button>
-    <p class="text-center text-muted" id="voice-label" style="font-size:14px; display:none;">Tap to speak your answer</p>
+    <p class="text-center text-muted" id="voice-label" style="font-size:14px; display:none;">{{ t.get('speak_answer_prompt', 'Tap to speak your answer') }}</p>
+    <div id="speech-feedback" style="display:none; margin:12px auto 0; max-width:380px; padding:10px 18px; border-radius:14px; font-size:15px; font-weight:600; text-align:center; transition:all 0.3s ease;"></div>
 </div>
 {% endblock %}
 
@@ -46,6 +47,85 @@ let streakCount = 0;
 let scorePoints = 0;
 let isListening = false;
 let recognition = null;
+
+const GAME_FEEDBACK = {
+    hi: {
+        correct: 'बिल्कुल सही! शाबाश!',
+        answer: 'सही उत्तर है:',
+        roundWatch: (r) => `दौर ${r}: पैटर्न को ध्यान से देखें!`,
+        watchCarefully: 'ध्यान से देखें...',
+        yourTurn: 'अब आपकी बारी! उसी क्रम में छुएं।',
+        notQuite: (ans) => `कोई बात नहीं। सही क्रम ${ans} था।`,
+        perfect: 'शाबाश! आपने बिल्कुल सही किया!',
+        badgeCorrect: '✅ बिल्कुल सही! 🎉',
+        badgeAnswer: (ans) => `उत्तर: ${ans} 💪`,
+        badgePattern: (p) => `पैटर्न: ${p} 💪`
+    },
+    mr: {
+        correct: 'बरोबर! खूप छान!',
+        answer: 'योग्य उत्तर आहे:',
+        roundWatch: (r) => `फेरी ${r}: पॅटर्न नीट बघा!`,
+        watchCarefully: 'लक्षपूर्वक पहा...',
+        yourTurn: 'आता तुमची वारी! त्याच क्रमाने टॅप करा.',
+        notQuite: (ans) => `काही हरकत नाही. योग्य क्रम ${ans} होता.`,
+        perfect: 'उत्तम! तुम्ही अगदी बरोबर ओळखले!',
+        badgeCorrect: '✅ अगदी बरोबर! 🎉',
+        badgeAnswer: (ans) => `उत्तर: ${ans} 💪`,
+        badgePattern: (p) => `पॅटर्न: ${p} 💪`
+    },
+    as: {
+        correct: 'সঠিক! বৰ ভাল!',
+        answer: 'সঠিক উত্তৰ হ\'ল:',
+        roundWatch: (r) => `ৰাউণ্ড ${r}: পেটাৰ্ণটো ভালদৰে চাওক!`,
+        watchCarefully: 'মনোযোগ দি চাওক...',
+        yourTurn: 'আপোনাৰ পাল! একে ক্ৰমত স্পৰ্শ কৰক।',
+        notQuite: (ans) => `কোনো কথা নাই। শুদ্ধ ক্ৰম আছিল ${ans}।`,
+        perfect: 'অসাধাৰণ! আপুনি শুদ্ধকৈ কৰিলে!',
+        badgeCorrect: '✅ সঠিক! 🎉',
+        badgeAnswer: (ans) => `উত্তৰ: ${ans} 💪`,
+        badgePattern: (p) => `পেটাৰ্ণ: ${p} 💪`
+    },
+    bn: {
+        correct: 'সঠিক! খুব ভালো!',
+        answer: 'সঠিক উত্তর হলো:',
+        roundWatch: (r) => `রাউন্ড ${r}: প্যাটার্নটি মনোযোগ দিয়ে দেখুন!`,
+        watchCarefully: 'মনোযোগ দিয়ে দেখুন...',
+        yourTurn: 'আপনার পালা! একই ক্রমে স্পর্শ করুন।',
+        notQuite: (ans) => `কোনো সমস্যা নেই। সঠিক ক্রম ছিল ${ans}।`,
+        perfect: 'চমৎকার! আপনি একদম সঠিক করেছেন!',
+        badgeCorrect: '✅ চমৎকার! 🎉',
+        badgeAnswer: (ans) => `উত্তর: ${ans} 💪`,
+        badgePattern: (p) => `প্যাটার্ন: ${p} 💪`
+    },
+    mni: {
+        correct: 'চুম্মী! য়াম্না ফৈ!',
+        answer: 'চুম্বা ৱাহৈ:',
+        roundWatch: (r) => `রাউন্দ ${r}: পেতর্ন চেকশিন্না য়েংঙু!`,
+        watchCarefully: 'চেকশিন্না য়েংঙু...',
+        yourTurn: 'অদোমগী তাঞ্জা! চপ মান্নবা মতৌদা নম্মু।',
+        notQuite: (ans) => `খরা ৱাৎলি। চুম্বা পেতর্নদি ${ans}নি।`,
+        perfect: 'য়াম্না ফৈ! অদোমনা চুম্না তৌরে!',
+        badgeCorrect: '✅ চুম্মী! 🎉',
+        badgeAnswer: (ans) => `চুম্বা: ${ans} 💪`,
+        badgePattern: (p) => `পেতর্ন: ${p} 💪`
+    },
+    en: {
+        correct: 'Correct! Well done!',
+        answer: 'The answer is',
+        roundWatch: (r) => `Round ${r}: Watch the pattern!`,
+        watchCarefully: 'Watch carefully...',
+        yourTurn: 'Your turn! Tap in the same order.',
+        notQuite: (ans) => `Not quite. The pattern was ${ans}. Keep trying!`,
+        perfect: 'Perfect! You got it right!',
+        badgeCorrect: '✅ Perfect! 🎉',
+        badgeAnswer: (ans) => `Answer: ${ans} 💪`,
+        badgePattern: (p) => `Pattern was: ${p} 💪`
+    }
+};
+
+function getFb() {
+    return GAME_FEEDBACK[LANGUAGE] || GAME_FEEDBACK['en'];
+}
 
 // --- LOAD GAME ---
 async function loadGame() {
@@ -72,8 +152,8 @@ async function loadGame() {
         }
     } catch(e) {
         document.getElementById('game-area').innerHTML = `
-            <p style="color: var(--danger); font-size: 20px;">Failed to load game. Please try again.</p>
-            <a href="/dashboard" class="btn-primary mt-24" style="width:auto;">← Back to Home</a>
+            <p style="color: var(--danger); font-size: 20px;">{{ t.get('error_loading', 'Failed to load game. Please try again.') }}</p>
+            <a href="/dashboard" class="btn-primary mt-24" style="width:auto;">← {{ t.get('back_to_home', 'Back to Home') }}</a>
         `;
     }
 }
@@ -85,15 +165,15 @@ function showRecognitionQuestion() {
         return;
     }
     
+    const sf = document.getElementById('speech-feedback');
+    if (sf) { sf.style.display = 'none'; sf.innerHTML = ''; }
+    
     const item = gameData.items[currentIndex];
     const area = document.getElementById('game-area');
     const mode = item.mode || 'name_text';
-    
-    // Escape helper
     const esc = s => (s || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
     
     if (mode === 'image_grid' || mode === 'lineup') {
-        // Photo grid modes — show 2-4 photos as clickable cards
         const gridHtml = (item.photo_grid || []).map((g, i) => `
             <div class="photo-grid-card" onclick="selectGridAnswer('${esc(g.name)}', '${esc(item.correct)}', this)" id="grid-${i}">
                 <img src="${g.url}" alt="Photo" style="width:100%; height:120px; object-fit:cover; border-radius:var(--radius-md);">
@@ -105,9 +185,7 @@ function showRecognitionQuestion() {
             <div class="game-question">🔊 ${item.image_desc}</div>
             <div class="photo-grid-container">${gridHtml}</div>
         `;
-        
     } else if (mode === 'yes_no') {
-        // Yes/No — show photo with large buttons
         const photoHtml = item.photo_url 
             ? `<img src="${item.photo_url}" alt="Photo" style="width:200px; height:200px; object-fit:cover; border-radius:var(--radius-lg); border:3px solid var(--border);">` 
             : `<div class="game-image">${getCategoryEmoji(item.category)}</div>`;
@@ -120,9 +198,7 @@ function showRecognitionQuestion() {
                 <button class="game-option yesno-btn no-btn" onclick="selectAnswer('${esc(item.options[1])}', '${esc(item.correct)}', this)" id="opt-1">${item.options[1]}</button>
             </div>
         `;
-        
     } else {
-        // name_text / relation — standard photo + text options
         let imageHtml;
         if (item.is_real_photo && item.photo_url) {
             imageHtml = `<img src="${item.photo_url}" alt="Family photo" style="width:200px; height:200px; object-fit:cover; border-radius:var(--radius-lg); border:3px solid var(--border);">`;
@@ -146,19 +222,12 @@ function showRecognitionQuestion() {
     speakText(item.image_desc);
 }
 
-const GAME_FEEDBACK = {
-    hi: { correct: 'बिल्कुल सही! शाबाश!', answer: 'सही उत्तर है:' },
-    mr: { correct: 'बरोबर! खूप छान!', answer: 'योग्य उत्तर आहे:' },
-    as: { correct: 'সঠিক! বৰ ভাল!', answer: 'সঠিক উত্তৰ হ\'ল:' },
-    bn: { correct: 'সঠিক! খুব ভালো!', answer: 'সঠিক উত্তর হলো:' },
-    mni: { correct: 'চুম্মী! য়াম্না ফৈ!', answer: 'চুম্বা ৱাহৈ:' },
-    ta: { correct: 'சரி! மிக நன்று!', answer: 'சரியான பதில்:' },
-    en: { correct: 'Correct! Well done!', answer: 'The answer is' }
-};
-
 function selectGridAnswer(selected, correct, el) {
+    if (recognition && isListening) {
+        try { recognition.stop(); } catch(e) {}
+    }
     document.querySelectorAll('.photo-grid-card').forEach(c => c.classList.add('disabled'));
-    const fb = GAME_FEEDBACK[LANGUAGE] || GAME_FEEDBACK['en'];
+    const fb = getFb();
     
     if (selected === correct) {
         el.classList.add('correct');
@@ -166,7 +235,7 @@ function selectGridAnswer(selected, correct, el) {
         streakCount++;
         scorePoints += 50 * Math.min(streakCount, 5);
         speakText(fb.correct);
-        showFeedback('✅ Correct! 🎉', 'var(--primary)');
+        showFeedback(fb.badgeCorrect, 'var(--primary)');
     } else {
         el.classList.add('wrong');
         document.querySelectorAll('.photo-grid-card').forEach(c => {
@@ -175,7 +244,7 @@ function selectGridAnswer(selected, correct, el) {
         streakCount = 0;
         hearts = Math.max(0, hearts - 1);
         speakText(`${fb.answer} ${correct}.`);
-        showFeedback(`Answer: ${correct} 💪`, 'var(--accent)');
+        showFeedback(fb.badgeAnswer(correct), 'var(--accent)');
     }
     
     document.getElementById('hearts').textContent = hearts;
@@ -195,9 +264,11 @@ function getCategoryEmoji(cat) {
 }
 
 function selectAnswer(selected, correct, btn) {
-    // Disable all options
+    if (recognition && isListening) {
+        try { recognition.stop(); } catch(e) {}
+    }
     document.querySelectorAll('.game-option').forEach(o => o.classList.add('disabled'));
-    const fb = GAME_FEEDBACK[LANGUAGE] || GAME_FEEDBACK['en'];
+    const fb = getFb();
     
     if (selected === correct) {
         btn.classList.add('correct');
@@ -205,28 +276,23 @@ function selectAnswer(selected, correct, btn) {
         streakCount++;
         scorePoints += 50 * Math.min(streakCount, 5);
         speakText(fb.correct);
-        
-        // Show celebration
-        showFeedback('✅ Correct! 🎉', 'var(--primary)');
+        showFeedback(fb.badgeCorrect, 'var(--primary)');
     } else {
         btn.classList.add('wrong');
-        // Highlight correct answer
         document.querySelectorAll('.game-option').forEach(o => {
             if (o.textContent.trim() === correct) o.classList.add('correct');
         });
         streakCount = 0;
         hearts = Math.max(0, hearts - 1);
         speakText(`${fb.answer} ${correct}.`);
-        showFeedback(`The answer is: ${correct} 💪`, 'var(--accent)');
+        showFeedback(fb.badgeAnswer(correct), 'var(--accent)');
     }
     
-    // Update stats
     document.getElementById('hearts').textContent = hearts;
     document.getElementById('streak').textContent = streakCount;
     document.getElementById('score').textContent = scorePoints;
     document.getElementById('progress').textContent = `${currentIndex + 1}/${totalCount}`;
     
-    // Next question after delay
     setTimeout(() => {
         currentIndex++;
         showRecognitionQuestion();
@@ -246,12 +312,12 @@ function showPatternRound() {
     }
     
     const round = gameData.rounds[patternRoundIndex];
+    const fb = getFb();
     currentPattern = round.pattern;
     playerPattern = [];
     
     const area = document.getElementById('game-area');
     
-    // Build NE motif grid cells with SVG icons
     const motifCells = gameData.motifs_available
         ? gameData.motifs_available.map((motif, i) => {
             const svg = (gameData.motif_svgs && gameData.motif_svgs[motif]) || '';
@@ -273,28 +339,30 @@ function showPatternRound() {
         `).join('');
     
     area.innerHTML = `
-        <div class="game-question">Round ${round.round}: Watch the pattern!</div>
+        <div class="game-question">${fb.roundWatch(round.round)}</div>
         <div class="pattern-grid" id="pattern-grid">
             ${motifCells}
         </div>
         <p id="pattern-status" style="font-size:20px; font-weight:700; color:var(--text-secondary); margin-top:16px;">
-            Watch carefully...
+            ${fb.watchCarefully}
         </p>
     `;
     
-    speakText(`Round ${round.round}. Watch the pattern carefully.`);
+    speakText(fb.roundWatch(round.round));
     
-    // Flash pattern
     setTimeout(() => flashPattern(round.pattern, 0, round.display_time), 1000);
 }
 
 function flashPattern(pattern, idx, displayTime) {
+    const fb = getFb();
     if (idx >= pattern.length) {
-        // Done showing, player's turn
         isShowingPattern = false;
-        document.getElementById('pattern-status').textContent = 'Your turn! Tap the colors in the same order.';
-        document.getElementById('pattern-status').style.color = 'var(--primary-dark)';
-        speakText('Your turn! Tap the colors in the same order.');
+        const statusEl = document.getElementById('pattern-status');
+        if (statusEl) {
+            statusEl.textContent = fb.yourTurn;
+            statusEl.style.color = 'var(--primary-dark)';
+        }
+        speakText(fb.yourTurn);
         return;
     }
     
@@ -314,7 +382,7 @@ function flashPattern(pattern, idx, displayTime) {
         }
     });
 }
-
+    
 function tapPattern(idx, color) {
     if (isShowingPattern) return;
     
@@ -323,6 +391,7 @@ function tapPattern(idx, color) {
     setTimeout(() => cell.classList.remove('active'), 300);
     
     playerPattern.push(color);
+    const fb = getFb();
     
     const expectedIdx = playerPattern.length - 1;
     if (currentPattern[expectedIdx] !== color) {
@@ -332,8 +401,8 @@ function tapPattern(idx, color) {
         
         const nameMap = gameData.motif_names || gameData.color_names || {};
         const names = currentPattern.map(c => nameMap[c] || c).join(', ');
-        speakText(`Not quite. The pattern was ${names}. Keep trying!`);
-        showFeedback(`Pattern was: ${currentPattern.join(' → ')} 💪`, 'var(--accent)');
+        speakText(fb.notQuite(names));
+        showFeedback(fb.badgePattern(currentPattern.join(' → ')), 'var(--accent)');
         
         document.getElementById('hearts').textContent = hearts;
         document.getElementById('streak').textContent = streakCount;
@@ -352,8 +421,8 @@ function tapPattern(idx, color) {
         streakCount++;
         scorePoints += 60 * Math.min(streakCount, 5);
         
-        speakText('Perfect! You got it right!');
-        showFeedback('✅ Perfect! 🎉', 'var(--primary)');
+        speakText(fb.perfect);
+        showFeedback(fb.badgeCorrect, 'var(--primary)');
         
         document.getElementById('streak').textContent = streakCount;
         document.getElementById('score').textContent = scorePoints;
@@ -380,7 +449,6 @@ function showFeedback(text, color) {
 
 // --- END GAME ---
 function endGame() {
-    // Submit results
     fetch('/api/game-complete', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -391,67 +459,334 @@ function endGame() {
             domain: gameData.domain || 'Memory'
         })
     }).then(r => r.json()).then(data => {
-        // Redirect to results
         window.location.href = '/results';
     });
 }
 
+// --- TRANSLITERATION & PHONETIC NORMALIZATION ---
+const INDIC_MAP = {
+    // Bengali / Assamese vowels & matras
+    'অ':'a','আ':'a','ই':'i','ঈ':'i','উ':'u','ঊ':'u','ঋ':'ri',
+    'এ':'e','ঐ':'ai','ও':'o','ঔ':'au',
+    'া':'a','ি':'i','ী':'i','ু':'u','ূ':'u','ৃ':'ri',
+    'ে':'e','ৈ':'ai','ো':'o','ৌ':'au','্':'',
+    // Bengali / Assamese consonants
+    'ক':'k','খ':'kh','গ':'g','ঘ':'gh','ঙ':'ng',
+    'চ':'ch','ছ':'chh','জ':'j','ঝ':'jh','ঞ':'ny',
+    'ট':'t','ঠ':'th','ড':'d','ঢ':'dh','ণ':'n',
+    'ত':'t','থ':'th','দ':'d','ধ':'dh','ন':'n',
+    'প':'p','ফ':'f','ব':'b','ভ':'bh','ম':'m',
+    'য':'j','ৰ':'r','র':'r','ল':'l','ৱ':'w',
+    'শ':'sh','ষ':'sh','স':'s','হ':'h',
+    'ড়':'r','ঢ়':'rh','য়':'y','ৎ':'t','ং':'ng','ঃ':'h','ঁ':'',
+    // Bengali digits
+    '০':'0','১':'1','২':'2','৩':'3','৪':'4','৫':'5','৬':'6','৭':'7','৮':'8','৯':'9',
+    // Devanagari vowels & matras
+    'अ':'a','आ':'a','इ':'i','ई':'i','उ':'u','ऊ':'u','ऋ':'ri',
+    'ए':'e','ऐ':'ai','ओ':'o','औ':'au',
+    'ा':'a','ि':'i','ी':'i','ु':'u','ू':'u','ृ':'ri',
+    'े':'e','ै':'ai','ो':'o','ौ':'au','्':'',
+    // Devanagari consonants
+    'क':'k','ख':'kh','ग':'g','घ':'gh','ङ':'ng',
+    'च':'ch','छ':'chh','ज':'j','झ':'jh','ञ':'ny',
+    'ट':'t','ठ':'th','ड':'d','ढ':'dh','ण':'n',
+    'त':'t','थ':'th','द':'d','ध':'dh','न':'n',
+    'प':'p','फ':'ph','ब':'b','भ':'bh','म':'m',
+    'य':'y','र':'r','ल':'l','ळ':'l','व':'v',
+    'श':'sh','ष':'sh','स':'s','ह':'h',
+    'ड़':'r','ढ़':'rh','य़':'y','ं':'n','ः':'h','ँ':'',
+    // Devanagari digits
+    '०':'0','१':'1','२':'2','३':'3','४':'4','५':'5','६':'6','७':'7','८':'8','९':'9'
+};
+
+function indicToLatin(str) {
+    if (!str) return '';
+    let out = '';
+    for (let i = 0; i < str.length; i++) {
+        out += INDIC_MAP[str[i]] !== undefined ? INDIC_MAP[str[i]] : str[i];
+    }
+    return out.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function normPhonetic(s) {
+    return (s || '').toLowerCase()
+        .replace(/aa/g, 'a').replace(/ee/g, 'i').replace(/oo/g, 'u')
+        .replace(/sh/g, 's').replace(/th/g, 't').replace(/dh/g, 'd')
+        .replace(/bh/g, 'b').replace(/ph/g, 'p').replace(/kh/g, 'k')
+        .replace(/gh/g, 'g').replace(/jh/g, 'j').replace(/ch/g, 'c');
+}
+
+function getOptionIndexFromSpeech(text) {
+    const t = (text || '').trim().toLowerCase();
+    
+    // Direct digit checks or specific ordinal phrases anywhere in speech
+    if (/[1১१]/.test(t) || /(^|\s)(one|first|1st|option 1|number 1|no 1|a|এক|প্ৰথম|প্ৰথমটো|১ম|প্রথম|पहला|प्रथम|पहिला)(\s|$)/i.test(t)) return 0;
+    if (/[2২२]/.test(t) || /(^|\s)(two|second|2nd|option 2|number 2|no 2|b|দুই|দ্বিতীয়|দ্বিতীয়টো|২য়|দ্বিতীয়|दूसरा|द्वितीय|दुसरा)(\s|$)/i.test(t)) return 1;
+    if (/[3৩३]/.test(t) || /(^|\s)(three|third|3rd|option 3|number 3|no 3|c|তিনি|তিন|তৃতীয়|তৃতীয়টো|৩য়|तृतीय|तीसरा|तिसरा)(\s|$)/i.test(t)) return 2;
+    if (/[4৪४]/.test(t) || /(^|\s)(four|fourth|4th|option 4|number 4|no 4|d|চাৰি|চার|চতুৰ্থ|চতুৰ্থটো|৪ৰ্থ|चतुर्थ|चौथा)(\s|$)/i.test(t)) return 3;
+
+    // Binary Yes / No
+    if (/(^|\s)(yes|yeah|yep|হৌই|হয়|হ্যাঁ|हाँ|हो|সঁচা|true)(\s|$)/i.test(t)) return 0;
+    if (/(^|\s)(no|nope|নত্তে|নহয়|না|नहीं|नाही|মিছা|false)(\s|$)/i.test(t)) return 1;
+
+    return -1;
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function showSpeechLive(text) {
+    const box = document.getElementById('speech-feedback');
+    if (!box) return;
+    box.style.display = 'block';
+    box.style.background = 'rgba(99, 102, 241, 0.12)';
+    box.style.border = '1.5px solid #6366f1';
+    box.style.color = '#3730a3';
+    box.innerHTML = `🎙️ <em>"${escapeHtml(text)}"</em>`;
+}
+
+function showSpeechMatch(spoken, selectedText) {
+    const box = document.getElementById('speech-feedback');
+    if (!box) return;
+    box.style.display = 'block';
+    box.style.background = 'rgba(16, 185, 129, 0.15)';
+    box.style.border = '1.5px solid #10b981';
+    box.style.color = '#065f46';
+    box.innerHTML = `✅ <strong>"${escapeHtml(selectedText)}"</strong> selected!`;
+    setTimeout(() => { if (box) box.style.display = 'none'; }, 2200);
+}
+
+function showSpeechUnmatched(spoken) {
+    const box = document.getElementById('speech-feedback');
+    if (!box) return;
+    const hints = {
+        'as': '১, ২, ৩, ৪ বা নামটো কওক',
+        'bn': '১, ২, ৩, ৪ বা নামটি বলুন',
+        'hi': '१, २, ३, ४ या नाम बोलें',
+        'mr': '१, २, ३, ४ किंवा नाव बोला',
+        'mni': '১, ২, ৩, ৪ নত্রগা মিং হায়বীয়ু',
+        'en': 'Say 1, 2, 3, 4 or the name'
+    };
+    const hint = hints[LANGUAGE] || hints['en'];
+    box.style.display = 'block';
+    box.style.background = 'rgba(245, 158, 11, 0.15)';
+    box.style.border = '1.5px solid #f59e0b';
+    box.style.color = '#92400e';
+    box.innerHTML = `⚠️ Heard: <em>"${escapeHtml(spoken)}"</em><br><small style="font-size:12px; font-weight:700;">💡 ${hint}</small>`;
+}
+
+function matchAndSelectVoiceAnswer(rawTranscript) {
+    if (!rawTranscript) return false;
+    const transcript = rawTranscript.trim().toLowerCase();
+    console.log('Processing voice answer:', rawTranscript);
+    
+    const optIdx = getOptionIndexFromSpeech(rawTranscript);
+    
+    if (GAME_TYPE === 'recognition') {
+        const options = Array.from(document.querySelectorAll('.game-option:not(.disabled)'));
+        const cards = Array.from(document.querySelectorAll('.photo-grid-card:not(.disabled)'));
+        
+        // 1. Ordinal / number index match
+        if (optIdx >= 0) {
+            if (options.length > optIdx) {
+                const target = options[optIdx];
+                showSpeechMatch(rawTranscript, target.textContent.trim());
+                target.click();
+                return true;
+            }
+            if (cards.length > optIdx) {
+                const target = cards[optIdx];
+                const name = target.querySelector('.photo-grid-name')?.textContent.trim() || `Option ${optIdx + 1}`;
+                showSpeechMatch(rawTranscript, name);
+                target.click();
+                return true;
+            }
+        }
+        
+        // 2. Name & text matching with transliteration and phonetic equivalence
+        const cleanTrans = indicToLatin(rawTranscript);
+        const normTrans = normPhonetic(cleanTrans);
+        const latinTokens = cleanTrans.split(/\s+/).filter(t => t.length >= 2);
+        
+        for (const opt of options) {
+            const rawText = opt.textContent.trim();
+            const cleanOpt = indicToLatin(rawText);
+            const normOpt = normPhonetic(cleanOpt);
+            
+            // Exact matches
+            if (rawText.toLowerCase() === transcript || 
+                cleanOpt === cleanTrans || 
+                normOpt === normTrans) {
+                showSpeechMatch(rawTranscript, rawText);
+                opt.click();
+                return true;
+            }
+            
+            // Token match: if spoken utterance contains the name as a word
+            const tokenMatch = latinTokens.some(t => normPhonetic(t) === normOpt || (normOpt.length >= 3 && normPhonetic(t) === normOpt));
+            // Phrase inclusion
+            const phraseMatch = normOpt.length >= 3 && normTrans.includes(normOpt);
+            
+            if (tokenMatch || phraseMatch) {
+                showSpeechMatch(rawTranscript, rawText);
+                opt.click();
+                return true;
+            }
+        }
+        
+        // Match against photo grid cards
+        for (const card of cards) {
+            const nameEl = card.querySelector('.photo-grid-name');
+            if (!nameEl) continue;
+            const rawName = nameEl.textContent.trim();
+            const cleanName = indicToLatin(rawName);
+            const normName = normPhonetic(cleanName);
+            
+            if (rawName.toLowerCase() === transcript || 
+                cleanName === cleanTrans || 
+                normName === normTrans ||
+                latinTokens.some(t => normPhonetic(t) === normName) ||
+                (normName.length >= 3 && normTrans.includes(normName))) {
+                showSpeechMatch(rawTranscript, rawName);
+                card.click();
+                return true;
+            }
+        }
+    } else if (GAME_TYPE === 'pattern') {
+        const cells = Array.from(document.querySelectorAll('.pattern-cell'));
+        if (optIdx >= 0 && cells.length > optIdx) {
+            const target = cells[optIdx];
+            showSpeechMatch(rawTranscript, target.dataset.color || `Cell ${optIdx + 1}`);
+            target.click();
+            return true;
+        }
+        
+        const cleanTrans = indicToLatin(rawTranscript);
+        const normTrans = normPhonetic(cleanTrans);
+        const names = gameData.motif_names || gameData.color_names || {};
+        
+        for (const cell of cells) {
+            const color = cell.dataset.color || '';
+            const localizedName = names[color] || color;
+            const cleanName = indicToLatin(localizedName);
+            const normName = normPhonetic(cleanName);
+            
+            if (transcript.includes(color.toLowerCase()) || 
+                transcript.includes(localizedName.toLowerCase()) ||
+                normTrans.includes(normName) ||
+                normName.includes(normTrans)) {
+                showSpeechMatch(rawTranscript, localizedName);
+                cell.click();
+                return true;
+            }
+        }
+    }
+    
+    showSpeechUnmatched(rawTranscript);
+    return false;
+}
+
 // --- VOICE CONTROL ---
+let capturedVoiceTranscript = '';
+
 function toggleVoice() {
     if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-        alert('Voice not supported in this browser. Use Chrome or Edge.');
+        alert(LANGUAGE === 'hi' ? 'इस ब्राउज़र में आवाज़ समर्थित नहीं है। कृपया Chrome या Edge का उपयोग करें।'
+            : LANGUAGE === 'mr' ? 'या ब्राउझरमध्ये आवाज समर्थित नाही. कृपया Chrome किंवा Edge वापरा.'
+            : LANGUAGE === 'as' ? 'এই ব্ৰাউজাৰত ভইচ সমৰ্থিত নহয়। অনুগ্ৰহ কৰি Chrome বা Edge ব্যৱহাৰ কৰক।'
+            : LANGUAGE === 'bn' ? 'এই ব্রাউজারে ভয়েস সমর্থিত নয়। অনুগ্রহ করে Chrome বা Edge ব্যবহার করুন।'
+            : LANGUAGE === 'mni' ? 'ব্রাউজরসিদা খোঞ্জেল য়াওদে। Chrome নত্রগা Edge শীজিন্নবীয়ু।'
+            : 'Voice not supported in this browser. Use Chrome or Edge.');
         return;
     }
     
     const btn = document.getElementById('voice-btn');
+    const vLbl = document.getElementById('voice-label');
+    const fbBox = document.getElementById('speech-feedback');
     
-    if (isListening) {
+    if (isListening && recognition) {
         recognition.stop();
         isListening = false;
         btn.classList.remove('listening');
+        if (vLbl) vLbl.textContent = '{{ t.get("speak_answer_prompt", "Tap to speak your answer") }}';
         return;
     }
     
+    if ('speechSynthesis' in window) {
+        speechSynthesis.cancel();
+    }
+    
+    capturedVoiceTranscript = '';
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     recognition = new SpeechRecognition();
-    recognition.lang = LANGUAGE === 'hi' ? 'hi-IN' 
-                     : LANGUAGE === 'mr' ? 'mr-IN' 
-                     : LANGUAGE === 'as' ? 'as-IN' 
-                     : LANGUAGE === 'bn' ? 'bn-IN' 
-                     : LANGUAGE === 'mni' ? 'bn-IN' 
-                     : LANGUAGE === 'ta' ? 'ta-IN' 
-                     : 'en-IN';
+    
+    // Map languages safely: Chrome doesn't support as-IN or mni-IN, map to bn-IN
+    const langMap = {
+        'hi': 'hi-IN',
+        'mr': 'mr-IN',
+        'as': 'bn-IN',
+        'bn': 'bn-IN',
+        'mni': 'bn-IN',
+        'ta': 'ta-IN',
+        'en': 'en-IN'
+    };
+    recognition.lang = langMap[LANGUAGE] || 'en-IN';
     recognition.continuous = false;
-    recognition.interimResults = false;
+    recognition.interimResults = true;
     
     recognition.onstart = () => {
         isListening = true;
         btn.classList.add('listening');
+        if (vLbl) {
+            vLbl.textContent = '🎙️ ' + (LANGUAGE === 'hi' ? 'सुन रहा हूँ... बोलिए' 
+                                      : LANGUAGE === 'mr' ? 'ऐकत आहे... बोला' 
+                                      : LANGUAGE === 'as' ? 'শুনি আছোঁ... কওক' 
+                                      : LANGUAGE === 'bn' ? 'শুনছি... বলুন' 
+                                      : LANGUAGE === 'mni' ? 'তাবিবা... হায়বীয়ু' 
+                                      : 'Listening... speak now');
+        }
+        if (fbBox) {
+            fbBox.style.display = 'block';
+            fbBox.style.background = 'rgba(99, 102, 241, 0.08)';
+            fbBox.style.border = '1.5px dashed #6366f1';
+            fbBox.style.color = '#4338ca';
+            fbBox.innerHTML = `🎙️ ` + (LANGUAGE === 'as' ? 'কওক (নাম বা ১, ২, ৩, ৪)...'
+                                  : LANGUAGE === 'bn' ? 'বলুন (নাম বা ১, ২, ৩, ৪)...'
+                                  : LANGUAGE === 'hi' ? 'बोलिए (नाम या १, २, ३, ४)...'
+                                  : LANGUAGE === 'mr' ? 'बोला (नाव किंवा १, २, ३, ४)...'
+                                  : LANGUAGE === 'mni' ? 'হায়বীয়ু (মিং নত্রগা ১, ২, ৩, ৪)...'
+                                  : 'Speak (name or 1, 2, 3, 4)...');
+        }
     };
     
     recognition.onresult = (e) => {
-        const transcript = e.results[0][0].transcript.trim().toLowerCase();
-        console.log('Voice:', transcript);
+        let interim = '';
+        let final = '';
+        for (let i = e.resultIndex; i < e.results.length; ++i) {
+            if (e.results[i].isFinal) {
+                final += e.results[i][0].transcript;
+            } else {
+                interim += e.results[i][0].transcript;
+            }
+        }
         
-        if (GAME_TYPE === 'recognition') {
-            // Try to match answer
-            document.querySelectorAll('.game-option:not(.disabled)').forEach(opt => {
-                if (opt.textContent.trim().toLowerCase() === transcript) {
-                    opt.click();
-                }
-            });
-        } else if (GAME_TYPE === 'pattern') {
-            // Try to match motif name
-            const names = gameData.motif_names || gameData.color_names || {};
-            const reverseMap = {};
-            Object.entries(names).forEach(([key, val]) => {
-                reverseMap[val.toLowerCase()] = key;
-            });
-            const motif = reverseMap[transcript];
-            if (motif) {
-                document.querySelectorAll('.pattern-cell').forEach(cell => {
-                    if (cell.dataset.color === motif) cell.click();
-                });
+        capturedVoiceTranscript = (final || interim || '').trim();
+        if (capturedVoiceTranscript) {
+            showSpeechLive(capturedVoiceTranscript);
+        }
+        
+        if (final.trim()) {
+            const matched = matchAndSelectVoiceAnswer(final.trim());
+            if (matched && recognition) {
+                capturedVoiceTranscript = '';
+                try { recognition.stop(); } catch(err) {}
             }
         }
     };
@@ -459,14 +794,31 @@ function toggleVoice() {
     recognition.onend = () => {
         isListening = false;
         btn.classList.remove('listening');
+        if (vLbl) vLbl.textContent = '{{ t.get("speak_answer_prompt", "Tap to speak your answer") }}';
+        
+        if (capturedVoiceTranscript) {
+            const textToProcess = capturedVoiceTranscript;
+            capturedVoiceTranscript = '';
+            matchAndSelectVoiceAnswer(textToProcess);
+        }
     };
     
-    recognition.onerror = () => {
+    recognition.onerror = (e) => {
+        console.warn('Speech recognition error:', e.error);
+        if (e.error === 'language-not-supported' && recognition.lang !== 'en-IN') {
+            recognition.lang = 'en-IN';
+            try { recognition.start(); return; } catch(err) {}
+        }
         isListening = false;
         btn.classList.remove('listening');
+        if (vLbl) vLbl.textContent = '{{ t.get("speak_answer_prompt", "Tap to speak your answer") }}';
     };
     
-    recognition.start();
+    try {
+        recognition.start();
+    } catch(err) {
+        console.warn('Recognition start exception:', err);
+    }
 }
 
 // --- TTS ---
@@ -492,7 +844,7 @@ function browserSpeakGame(text) {
         u.rate = 0.8;
         const bcp47 = LANGUAGE === 'hi' ? 'hi-IN' 
                      : LANGUAGE === 'mr' ? 'mr-IN' 
-                     : LANGUAGE === 'as' ? 'as-IN' 
+                     : LANGUAGE === 'as' ? 'bn-IN' 
                      : LANGUAGE === 'bn' ? 'bn-IN' 
                      : LANGUAGE === 'mni' ? 'bn-IN' 
                      : LANGUAGE === 'ta' ? 'ta-IN' 

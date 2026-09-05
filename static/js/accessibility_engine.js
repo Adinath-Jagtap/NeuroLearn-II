@@ -276,9 +276,22 @@ class AccessibilityEngine {
             alert('Speech recognition is not supported in this browser. Please use Chrome or Edge.');
             return;
         }
+        if ('speechSynthesis' in window) {
+            speechSynthesis.cancel();
+        }
         const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
         const recognition = new SR();
-        recognition.lang = document.documentElement.lang || 'en-IN';
+        const docLang = (document.documentElement.lang || 'en').toLowerCase();
+        const langMap = {
+            'hi': 'hi-IN',
+            'mr': 'mr-IN',
+            'bn': 'bn-IN',
+            'as': 'bn-IN',
+            'mni': 'bn-IN',
+            'ta': 'ta-IN',
+            'en': 'en-IN'
+        };
+        recognition.lang = langMap[docLang] || 'en-IN';
         recognition.continuous = false;
         recognition.interimResults = false;
         recognition.onresult = (event) => {
@@ -287,7 +300,15 @@ class AccessibilityEngine {
         };
         recognition.onerror = (event) => {
             console.warn('[AccessibilityEngine] Speech recognition error:', event.error);
+            if (event.error === 'language-not-supported' && recognition.lang !== 'en-IN') {
+                recognition.lang = 'en-IN';
+                try { recognition.start(); } catch(err) {}
+            }
         };
-        recognition.start();
+        try {
+            recognition.start();
+        } catch(err) {
+            console.warn('[AccessibilityEngine] Recognition start error:', err);
+        }
     }
 }

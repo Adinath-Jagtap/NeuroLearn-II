@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Results — NeuroLearn 2.0{% endblock %}
+{% block title %}{{ t.get('results_title', 'Results') }} — NeuroLearn 2.0{% endblock %}
 {% block content %}
 <div class="results-container">
     {% set accuracy = result.get('accuracy', 0) %}
@@ -12,30 +12,30 @@
     
     <div class="results-score">{{ accuracy }}%</div>
     
-    <div class="results-xp">+{{ result.get('xp', 0) }} points earned! ⭐</div>
+    <div class="results-xp">+{{ result.get('xp', 0) }} {{ t.get('points_earned', 'points earned! ⭐') }}</div>
     
     <div class="results-stats">
         <div class="results-stat">
             <div class="results-stat-value">{{ result.get('correct', 0) }}</div>
-            <div class="results-stat-label">Correct</div>
+            <div class="results-stat-label">{{ t.get('stat_correct', 'Correct') }}</div>
         </div>
         <div class="results-stat">
             <div class="results-stat-value">{{ result.get('total', 0) }}</div>
-            <div class="results-stat-label">Total</div>
+            <div class="results-stat-label">{{ t.get('stat_total', 'Total') }}</div>
         </div>
         <div class="results-stat">
             <div class="results-stat-value">{{ total_xp }}</div>
-            <div class="results-stat-label">Total Points</div>
+            <div class="results-stat-label">{{ t.get('stat_points', 'Total Points') }}</div>
         </div>
         <div class="results-stat">
             <div class="results-stat-value">{{ result.get('game_type', '—') | capitalize }}</div>
-            <div class="results-stat-label">Game</div>
+            <div class="results-stat-label">{{ t.get('stat_game', 'Game') }}</div>
         </div>
     </div>
     
     <div class="flex-col gap-12">
-        <a href="/dashboard" class="btn-primary btn-big">🏠 Back to Home</a>
-        <a href="/companion" class="btn-secondary">💬 Talk to Companion</a>
+        <a href="/dashboard" class="btn-primary btn-big">🏠 {{ t.get('back_to_home', 'Back to Home') }}</a>
+        <a href="/companion" class="btn-secondary">💬 {{ t.get('talk_to_companion', 'Talk to Companion') }}</a>
     </div>
 </div>
 
@@ -44,18 +44,70 @@
 
 {% block scripts %}
 <script>
-// Speak result
 const accuracy = {{ result.get('accuracy', 0) }};
-const grade = '{{ result.get("grade", "Good effort!") }}';
+const LANG = '{{ current_language or "en" }}';
 
-window.addEventListener('load', () => {
+const RESULT_SPOKEN = {
+    hi: {
+        high: `शानदार प्रदर्शन! आपने ${accuracy} प्रतिशत अंक प्राप्त किए। बहुत बढ़िया!`,
+        low: `अच्छा प्रयास! आपने ${accuracy} प्रतिशत अंक प्राप्त किए। अभ्यास जारी रखें!`
+    },
+    mr: {
+        high: `उत्कृष्ट कामगिरी! तुम्हाला ${accuracy} टक्के गुण मिळाले. खूप छान!`,
+        low: `छान प्रयत्न! तुम्हाला ${accuracy} टक्के गुण मिळाले. सराव चालू ठेवा!`
+    },
+    as: {
+        high: `অসাধাৰণ প্ৰদৰ্শন! আপুনি ${accuracy} শতাংশ নম্বৰ লাভ কৰিলে। বৰ ভাল!`,
+        low: `ভাল প্ৰচেষ্টা! আপুনি ${accuracy} শতাংশ নম্বৰ লাভ কৰিলে। অভ্যাস অব্যাহত ৰাখক!`
+    },
+    bn: {
+        high: `অসাধারণ পারফরম্যান্স! আপনি ${accuracy} শতাংশ নম্বর পেয়েছেন। খুব ভালো!`,
+        low: `ভালো প্রচেষ্টা! আপনি ${accuracy} শতাংশ নম্বর পেয়েছেন। অনুশীলন চালিয়ে যান!`
+    },
+    mni: {
+        high: `য়াম্না ফবা! অদোমনা চাদা ${accuracy} ফংলে। য়াম্না ফৈ!`,
+        low: `ফবা হোৎনবনি! অদোমনা চাদা ${accuracy} ফংলে। লেপ্পনা হোৎনৌ!`
+    },
+    en: {
+        high: `Wonderful job! You scored ${accuracy} percent. Excellent work!`,
+        low: `Good effort! You scored ${accuracy} percent. Keep practicing, you are doing great!`
+    }
+};
+
+function speakText(text) {
+    fetch('/api/tts/speak', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({text: text, lang: LANG})
+    }).then(r => {
+        if (!r.ok) throw new Error('TTS failed');
+        return r.blob();
+    }).then(blob => {
+        const a = new Audio(URL.createObjectURL(blob));
+        a.play().catch(() => browserSpeakResults(text));
+    }).catch(() => browserSpeakResults(text));
+}
+
+function browserSpeakResults(text) {
     if ('speechSynthesis' in window) {
-        const u = new SpeechSynthesisUtterance(
-            `${grade} You scored ${accuracy} percent. ${accuracy >= 70 ? 'Wonderful job!' : 'Keep practicing, you are doing great!'}`
-        );
+        speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(text);
         u.rate = 0.85;
+        const bcp47 = LANG === 'hi' ? 'hi-IN' : LANG === 'mr' ? 'mr-IN' : LANG === 'as' ? 'bn-IN' : LANG === 'bn' ? 'bn-IN' : LANG === 'mni' ? 'bn-IN' : 'en-IN';
+        u.lang = bcp47;
+        const voices = speechSynthesis.getVoices();
+        const match = voices.find(v => v.lang.startsWith(bcp47.split('-')[0]));
+        if (match) u.voice = match;
         speechSynthesis.speak(u);
     }
+}
+
+window.addEventListener('load', () => {
+    const texts = RESULT_SPOKEN[LANG] || RESULT_SPOKEN['en'];
+    const msg = accuracy >= 70 ? texts.high : texts.low;
+    setTimeout(() => {
+        speakText(msg);
+    }, 600);
     
     // Confetti animation
     if (accuracy >= 50) {

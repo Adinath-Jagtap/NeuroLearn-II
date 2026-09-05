@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Memory Check — NeuroLearn 2.0{% endblock %}
+{% block title %}{{ t.get('memory_check_title', 'Memory Check') }} — NeuroLearn 2.0{% endblock %}
 {% block content %}
 <div class="onboarding-container" style="max-width: 600px; margin: 0 auto;">
 
@@ -7,11 +7,10 @@
     <div style="text-align:center; margin-bottom:28px; padding: 28px 20px 0;">
         <div style="font-size:72px; margin-bottom:12px;">🧠</div>
         <h1 style="font-family:var(--font-heading); font-size:28px; color:var(--text-primary); margin-bottom:8px;">
-            Welcome, {{ name }}!
+            {{ t.get('hello', 'Welcome') }}, {{ name }}!
         </h1>
         <p style="font-size:18px; color:var(--text-secondary); line-height:1.6;">
-            Let's do a quick <strong>memory check</strong> before we start your brain exercises.<br>
-            This takes just 2 minutes. 😊
+            {{ t.get('memory_check_sub', "Let's do a quick memory check before we start your brain exercises. This takes just 2 minutes. 😊") }}
         </p>
     </div>
 
@@ -24,9 +23,9 @@
 
     <!-- PHASE 1: Remember Words -->
     <div class="step-card" id="phase-1">
-        <h2 class="step-title">📝 Remember These 3 Words</h2>
+        <h2 class="step-title">{{ t.get('phase1_title', '📝 Remember These 3 Words') }}</h2>
         <p class="step-subtitle" style="font-size:18px;">
-            Your caregiver will read these words to you. Try to remember them!
+            {{ t.get('phase1_sub', 'Your caregiver will read these words to you. Try to remember them!') }}
         </p>
 
         <div style="display:flex; justify-content:center; gap:16px; flex-wrap:wrap; margin:28px 0;">
@@ -38,23 +37,23 @@
         </div>
 
         <button class="btn-tts-hero mb-24" onclick="speakWords()" style="width:100%; margin-bottom:16px;">
-            <i class="fas fa-volume-up"></i> Hear the words read aloud
+            <i class="fas fa-volume-up"></i> {{ t.get('hear_words', 'Hear the words read aloud') }}
         </button>
 
         <p style="font-size:16px; color:var(--text-muted); text-align:center; margin-bottom:20px;">
-            ⏱️ Study the words for a moment, then click below.
+            {{ t.get('study_words_hint', '⏱️ Study the words for a moment, then click below.') }}
         </p>
 
         <button class="btn-primary btn-big" onclick="goToPhase(2)">
-            I've remembered them →
+            {{ t.get('remembered_them_btn', "I've remembered them →") }}
         </button>
     </div>
 
     <!-- PHASE 2: Clock Drawing -->
     <div class="step-card hidden" id="phase-2">
-        <h2 class="step-title">🕒 Clock Drawing Test</h2>
+        <h2 class="step-title">{{ t.get('phase2_title', '🕒 Clock Drawing Test') }}</h2>
         <p class="step-subtitle" style="font-size:18px;">
-            Ask the patient to draw a clock showing <strong>10 past 11</strong> (or any time you choose).
+            {{ t.get('phase2_sub', 'Ask the patient to draw a clock showing 10 past 11 (or any time you choose).') }}
         </p>
 
         <div style="text-align:center; margin:20px 0 24px;">
@@ -63,50 +62,50 @@
             </div>
         </div>
 
-        <p style="font-size:17px; font-weight:700; margin-bottom:12px; color:var(--text-primary);">How did the patient do?</p>
+        <p style="font-size:17px; font-weight:700; margin-bottom:12px; color:var(--text-primary);">{{ t.get('how_patient_did', 'How did the patient do?') }}</p>
 
         <div class="stage-option" onclick="selectClock(2, this)" id="clock-normal">
-            <div class="stage-option-label">✅ Normal — All numbers present, hands show correct time</div>
+            <div class="stage-option-label">{{ t.get('clock_normal', '✅ Normal — All numbers present, hands show correct time') }}</div>
         </div>
         <div class="stage-option" onclick="selectClock(1, this)" id="clock-partial">
-            <div class="stage-option-label">⚠️ Partial — Some numbers missing or time is slightly off</div>
+            <div class="stage-option-label">{{ t.get('clock_partial', '⚠️ Partial — Some numbers missing or time is slightly off') }}</div>
         </div>
         <div class="stage-option" onclick="selectClock(0, this)" id="clock-unable">
-            <div class="stage-option-label">❌ Unable — Cannot draw a recognizable clock</div>
+            <div class="stage-option-label">{{ t.get('clock_unable', '❌ Unable — Cannot draw a recognizable clock') }}</div>
         </div>
 
         <input type="hidden" id="clock-score" value="1">
 
         <div style="display:flex; gap:12px; margin-top:20px;">
-            <button class="btn-secondary" onclick="goToPhase(1)" style="width:40%;">← BACK</button>
-            <button class="btn-primary" onclick="goToPhase(3)" style="width:60%;">NEXT →</button>
+            <button class="btn-secondary" onclick="goToPhase(1)" style="width:40%;">{{ t.get('back_btn', '← BACK') }}</button>
+            <button class="btn-primary" onclick="goToPhase(3)" style="width:60%;">{{ t.get('next_btn', 'NEXT →') }}</button>
         </div>
     </div>
 
     <!-- PHASE 3: Word Recall -->
     <div class="step-card hidden" id="phase-3">
-        <h2 class="step-title">🗣️ Remember the 3 Words?</h2>
+        <h2 class="step-title">{{ t.get('phase3_title', '🗣️ Remember the 3 Words?') }}</h2>
         <p class="step-subtitle" style="font-size:18px;">
-            What were the 3 words from the beginning? Ask the patient to recall them.
+            {{ t.get('phase3_sub', 'What were the 3 words from the beginning? Ask the patient to recall them.') }}
         </p>
 
         <div class="form-group">
-            <label class="form-label">Word 1</label>
-            <input type="text" id="recall-1" class="form-input" placeholder="First word..." style="font-size:20px;">
+            <label class="form-label">{{ t.get('word_1', 'Word 1') }}</label>
+            <input type="text" id="recall-1" class="form-input" placeholder="..." style="font-size:20px;">
         </div>
         <div class="form-group">
-            <label class="form-label">Word 2</label>
-            <input type="text" id="recall-2" class="form-input" placeholder="Second word..." style="font-size:20px;">
+            <label class="form-label">{{ t.get('word_2', 'Word 2') }}</label>
+            <input type="text" id="recall-2" class="form-input" placeholder="..." style="font-size:20px;">
         </div>
         <div class="form-group">
-            <label class="form-label">Word 3</label>
-            <input type="text" id="recall-3" class="form-input" placeholder="Third word..." style="font-size:20px;">
+            <label class="form-label">{{ t.get('word_3', 'Word 3') }}</label>
+            <input type="text" id="recall-3" class="form-input" placeholder="..." style="font-size:20px;">
         </div>
 
-        <button class="voice-btn" onclick="startVoiceRecall()" title="Speak the answers" style="margin:8px auto; display:block;">
+        <button class="voice-btn" onclick="startVoiceRecall()" title="{{ t.get('tap_mic_speak', 'Tap mic to speak answers') }}" style="margin:8px auto; display:block;">
             <i class="fas fa-microphone"></i>
         </button>
-        <p class="text-center text-muted" style="font-size:14px; margin-bottom:16px;">Tap mic to speak answers</p>
+        <p class="text-center text-muted" id="mic-hint" style="font-size:14px; margin-bottom:16px;">{{ t.get('tap_mic_speak', 'Tap mic to speak answers') }}</p>
 
         <!-- Mini-Cog Result (shown after evaluation) -->
         <div id="minicog-result" style="display:none; text-align:center; padding:20px; background:var(--primary-light); border-radius:var(--radius-md); border:2.5px solid var(--primary); margin-bottom:20px;">
@@ -116,12 +115,12 @@
         </div>
 
         <div style="display:flex; gap:12px; margin-top:8px;">
-            <button class="btn-secondary" onclick="goToPhase(2)" style="width:40%;" id="back-btn-3">← BACK</button>
-            <button class="btn-primary" onclick="submitMiniCog()" style="width:60%;" id="submit-btn">EVALUATE →</button>
+            <button class="btn-secondary" onclick="goToPhase(2)" style="width:40%;" id="back-btn-3">{{ t.get('back_btn', '← BACK') }}</button>
+            <button class="btn-primary" onclick="submitMiniCog()" style="width:60%;" id="submit-btn">{{ t.get('evaluate_btn', 'EVALUATE →') }}</button>
         </div>
 
         <button id="finish-btn" class="btn-primary btn-big" onclick="completeOnboarding()" style="display:none; width:100%; margin-top:12px;">
-            🎮 START BRAIN EXERCISES →
+            {{ t.get('start_exercises_btn', '🎮 START BRAIN EXERCISES →') }}
         </button>
     </div>
 </div>
@@ -130,8 +129,104 @@
 {% block scripts %}
 <script>
 const minicogWords = {{ minicog_words | tojson }};
+const LANG = '{{ current_language or "en" }}';
 let clockScore = 1;
 let minicogResult = null;
+
+const ONBOARDING_PROMPTS = {
+    hi: {
+        welcome: (n) => n ? `नमस्ते ${n}! अभ्यास शुरू करने से पहले एक छोटा मेमोरी चेक करते हैं।` : 'नमस्ते! अभ्यास शुरू करने से पहले एक छोटा मेमोरी चेक करते हैं।',
+        p1: 'इन तीन शब्दों को ध्यान से देखें और याद रखने की कोशिश करें।',
+        p2: 'अब घड़ी में 11 बजकर 10 मिनट बनाकर दिखाएं।',
+        p3: 'शुरुआत के वे तीन शब्द कौन से थे? याद करने की कोशिश करें।',
+        wordsSpeak: (w) => `इन 3 शब्दों को याद रखें: ${w}. फिर से: ${w}.`,
+        scoreLabel: (sc, w, c) => `स्कोर: ${sc}/5 — ${w} शब्द याद रहे, घड़ी: ${c}`,
+        completeMsg: (desc) => `मेमोरी चेक पूरा हुआ। ${desc}. अब अभ्यास शुरू करते हैं!`,
+        clockNormal: 'सामान्य', clockPartial: 'आंशिक', clockUnable: 'असमर्थ'
+    },
+    mr: {
+        welcome: (n) => n ? `नमस्कार ${n}! व्यायाम सुरू करण्यापूर्वी एक छोटी स्मरणशक्ती चाचणी करूया.` : 'नमस्कार! मेंदूच्या व्यायामापूर्वी एक छोटी स्मरणशक्ती चाचणी करूया.',
+        p1: 'हे तीन शब्द नीट पहा आणि लक्षात ठेवण्याचा प्रयत्न करा.',
+        p2: 'आता कागदावर 11 वाजून 10 मिनिटे दाखवणारे घड्याळ काढा.',
+        p3: 'सुरुवातीचे ते तीन शब्द कोणते होते? आठवण्याचा प्रयत्न करा.',
+        wordsSpeak: (w) => `हे ३ शब्द लक्षात ठेवा: ${w}. पुन्हा एकदा: ${w}.`,
+        scoreLabel: (sc, w, c) => `गुण: ${sc}/5 — ${w} शब्द आठवले, घड्याळ: ${c}`,
+        completeMsg: (desc) => `स्मरणशक्ती चाचणी पूर्ण झाली. ${desc}. आता व्यायाम सुरू करूया!`,
+        clockNormal: 'सामान्य', clockPartial: 'अंशतः', clockUnable: 'असमर्थ'
+    },
+    as: {
+        welcome: (n) => n ? `নমস্কাৰ ${n}! ব্যায়াম আৰম্ভ কৰাৰ আগতে স্মৃতি পৰীক্ষা এটা কৰোঁ আহক।` : 'নমস্কাৰ! ব্যায়াম আৰম্ভ কৰাৰ আগতে স্মৃতি পৰীক্ষা এটা কৰোঁ আহক।',
+        p1: 'এই তিনিটা শব্দ মনোযোগেৰে চাওক আৰু মনত ৰাখিবলৈ চেষ্টা কৰক।',
+        p2: 'এতিয়া কাগজত ১১ বাজি ১০ মিনিট দেখুওৱা ঘড়ী এটা আঁকক।',
+        p3: 'প্ৰথমৰ তিনিটা শব্দ কি আছিল? মনত পেলাবলৈ চেষ্টা কৰক।',
+        wordsSpeak: (w) => `এই ৩টা শব্দ মনত ৰাখক: ${w}। আকৌ এবাৰ: ${w}।`,
+        scoreLabel: (sc, w, c) => `স্কোৰ: ${sc}/5 — ${w}টা শব্দ মনত থাকিল, ঘড়ী: ${c}`,
+        completeMsg: (desc) => `স্মৃতি পৰীক্ষা সম্পূৰ্ণ হ'ল। ${desc}। এতিয়া ব্যায়াম আৰম্ভ কৰোঁ আহক!`,
+        clockNormal: 'স্বাভাৱিক', clockPartial: 'আংশিক', clockUnable: 'অসমৰ্থ'
+    },
+    bn: {
+        welcome: (n) => n ? `নমস্কার ${n}! অনুশীলন শুরু করার আগে একটি ছোট স্মৃতি পরীক্ষা করি।` : 'নমস্কার! অনুশীলন শুরু করার আগে একটি ছোট স্মৃতি পরীক্ষা করি।',
+        p1: 'এই তিনটি শব্দ মনোযোগ দিয়ে দেখুন এবং মনে রাখার চেষ্টা করুন।',
+        p2: 'এখন কাগজে ১১টা বেজে ১০ মিনিট দেখানো একটি ঘড়ি আঁকুন।',
+        p3: 'শুরুর তিনটি শব্দ কী ছিল? মনে করার চেষ্টা করুন।',
+        wordsSpeak: (w) => `এই ৩টি শব্দ মনে রাখুন: ${w}। আবারও: ${w}।`,
+        scoreLabel: (sc, w, c) => `স্কোর: ${sc}/5 — ${w}টি শব্দ মনে পড়েছে, ঘড়ি: ${c}`,
+        completeMsg: (desc) => `স্মৃতি পরীক্ষা সম্পূর্ণ হয়েছে। ${desc}। এবার অনুশীলন শুরু করি!`,
+        clockNormal: 'স্বাভাবিক', clockPartial: 'আংশিক', clockUnable: 'অসমর্থ'
+    },
+    mni: {
+        welcome: (n) => n ? `খুরুমজরি ${n}! এক্সরসাইজ হৌদ্রিঙৈদা নিংশিংবা চাংয়েং অমা তৌসি।` : 'খুরুমজরি! এক্সরসাইজ হৌদ্রিঙৈদা নিংশিংবা চাংয়েং অমা তৌসি।',
+        p1: 'ৱাহৈ অহুমসি চেকশিন্না য়েংঙু অমসুং নিংশিংনবা হোৎনৌ।',
+        p2: 'হৌজিক পুং ১১ তাবা মিনিট ১০ য়াওবা পুং অমা য়েকউ।',
+        p3: 'হান্নগী ৱাহৈ অহুমদু করিনো? নিংশিংনবা হোৎনৌ।',
+        wordsSpeak: (w) => `ৱাহৈ অহুমসি নিংশিংবীয়ু: ${w}। অমুক্কা: ${w}।`,
+        scoreLabel: (sc, w, c) => `স্কোর: ${sc}/5 — ৱাহৈ ${w} নিংশিংলে, পুং: ${c}`,
+        completeMsg: (desc) => `নিংশিংবা চাংয়েং লোইরে। ${desc}। হৌজিক এক্সরসাইজ হৌসি!`,
+        clockNormal: 'চুম্বা', clockPartial: 'খরা চুম্বা', clockUnable: 'ঙমদে'
+    },
+    en: {
+        welcome: (n) => n ? `Welcome ${n}! Let's do a quick memory check to get started.` : "Welcome! Let's do a quick memory check before your brain exercises.",
+        p1: 'Look at the three words carefully and try to remember them.',
+        p2: 'Now, draw a clock showing the time 10 past 11. Ask the patient to draw it on paper.',
+        p3: 'What were the three words from before? Try to remember them.',
+        wordsSpeak: (w) => `Remember these 3 words: ${w}. Again: ${w}.`,
+        scoreLabel: (sc, w, c) => `Score: ${sc}/5 — ${w} words recalled, Clock: ${c}`,
+        completeMsg: (desc) => `Memory check complete. ${desc}. Now let's start your brain exercises!`,
+        clockNormal: 'Normal', clockPartial: 'Partial', clockUnable: 'Unable'
+    }
+};
+
+function getObTxt() {
+    return ONBOARDING_PROMPTS[LANG] || ONBOARDING_PROMPTS['en'];
+}
+
+function speakText(text) {
+    fetch('/api/tts/speak', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({text: text, lang: LANG})
+    }).then(r => {
+        if (!r.ok) throw new Error('TTS failed');
+        return r.blob();
+    }).then(blob => {
+        const a = new Audio(URL.createObjectURL(blob));
+        a.play().catch(() => browserSpeak(text));
+    }).catch(() => browserSpeak(text));
+}
+
+function browserSpeak(text) {
+    if ('speechSynthesis' in window) {
+        speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        u.rate = 0.8;
+        const bcp47 = LANG === 'hi' ? 'hi-IN' : LANG === 'mr' ? 'mr-IN' : LANG === 'as' ? 'bn-IN' : LANG === 'bn' ? 'bn-IN' : LANG === 'mni' ? 'bn-IN' : 'en-IN';
+        u.lang = bcp47;
+        const voices = speechSynthesis.getVoices();
+        const match = voices.find(v => v.lang.startsWith(bcp47.split('-')[0]));
+        if (match) u.voice = match;
+        speechSynthesis.speak(u);
+    }
+}
 
 function goToPhase(n) {
     document.querySelectorAll('.step-card').forEach(el => el.classList.add('hidden'));
@@ -145,26 +240,15 @@ function goToPhase(n) {
 
     window.scrollTo({top: 0, behavior: 'smooth'});
 
-    // Speak prompt
-    const prompts = {
-        1: "Look at the three words carefully and try to remember them.",
-        2: "Now, draw a clock showing the time. Ask the patient to draw it on paper.",
-        3: "What were the three words from before? Try to remember them."
-    };
-    if ('speechSynthesis' in window) {
-        speechSynthesis.cancel();
-        const u = new SpeechSynthesisUtterance(prompts[n] || '');
-        u.rate = 0.8;
-        setTimeout(() => speechSynthesis.speak(u), 300);
-    }
+    const ot = getObTxt();
+    const prompt = n === 1 ? ot.p1 : n === 2 ? ot.p2 : ot.p3;
+    speakText(prompt);
 }
 
 function speakWords() {
-    speechSynthesis.cancel();
-    const text = 'Remember these 3 words: ' + minicogWords.join(', ') + '. Again: ' + minicogWords.join(', ');
-    const u = new SpeechSynthesisUtterance(text);
-    u.rate = 0.65;
-    speechSynthesis.speak(u);
+    const ot = getObTxt();
+    const text = ot.wordsSpeak(minicogWords.join(', '));
+    speakText(text);
 }
 
 function selectClock(score, el) {
@@ -179,20 +263,56 @@ function startVoiceRecall() {
         alert('Voice input not supported. Please type the words.');
         return;
     }
+    if ('speechSynthesis' in window) {
+        speechSynthesis.cancel();
+    }
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
-    recognition.lang = 'en-US';
+    const langMap = {
+        'hi': 'hi-IN',
+        'mr': 'mr-IN',
+        'as': 'bn-IN',
+        'bn': 'bn-IN',
+        'mni': 'bn-IN',
+        'ta': 'ta-IN',
+        'en': 'en-IN'
+    };
+    recognition.lang = langMap[LANG] || 'en-IN';
     recognition.continuous = false;
     recognition.interimResults = false;
 
+    const micHint = document.getElementById('mic-hint');
+    recognition.onstart = () => {
+        if (micHint) micHint.textContent = '🎙️ ' + (LANG === 'hi' ? 'सुन रहा हूँ...' : LANG === 'mr' ? 'ऐकत आहे...' : LANG === 'as' ? 'শুনি আছোঁ...' : LANG === 'bn' ? 'শুনছি...' : LANG === 'mni' ? 'তাবিবা...' : 'Listening...');
+    };
+
     recognition.onresult = function(e) {
-        const words = e.results[0][0].transcript.trim().split(/[\s,]+/);
+        const transcript = e.results[0][0].transcript.trim();
+        const words = transcript.split(/[\s,]+/);
         if (words[0]) document.getElementById('recall-1').value = words[0];
         if (words[1]) document.getElementById('recall-2').value = words[1];
         if (words[2]) document.getElementById('recall-3').value = words[2];
+        if (micHint) micHint.textContent = '{{ t.get("tap_mic_speak", "Tap mic to speak answers") }}';
     };
-    recognition.onerror = () => {};
-    recognition.start();
+    
+    recognition.onend = () => {
+        if (micHint) micHint.textContent = '{{ t.get("tap_mic_speak", "Tap mic to speak answers") }}';
+    };
+    
+    recognition.onerror = (e) => {
+        console.warn('Speech recognition error:', e.error);
+        if (e.error === 'language-not-supported' && recognition.lang !== 'en-IN') {
+            recognition.lang = 'en-IN';
+            try { recognition.start(); return; } catch(err) {}
+        }
+        if (micHint) micHint.textContent = '{{ t.get("tap_mic_speak", "Tap mic to speak answers") }}';
+    };
+    
+    try {
+        recognition.start();
+    } catch(err) {
+        console.warn('Recognition start exception:', err);
+    }
 }
 
 function submitMiniCog() {
@@ -202,9 +322,21 @@ function submitMiniCog() {
         document.getElementById('recall-3').value.trim().toLowerCase()
     ];
 
+    const cleanWord = w => w.replace(/\s*\(.*?\)\s*/g, '').trim().toLowerCase();
+    const englishWord = w => {
+        const m = w.match(/\((.*?)\)/);
+        return m ? m[1].trim().toLowerCase() : '';
+    };
+
     let wordsRecalled = 0;
     minicogWords.forEach(word => {
-        if (recalls.includes(word.toLowerCase())) wordsRecalled++;
+        const cw = cleanWord(word);
+        const ew = englishWord(word);
+        const matched = recalls.some(r => {
+            if (!r) return false;
+            return r === cw || r.includes(cw) || cw.includes(r) || (ew && (r === ew || r.includes(ew) || ew.includes(r)));
+        });
+        if (matched) wordsRecalled++;
     });
 
     fetch('/onboarding', {
@@ -214,24 +346,21 @@ function submitMiniCog() {
     }).then(r => r.json()).then(data => {
         const result = data.result;
         minicogResult = result;
+        const ot = getObTxt();
 
         const emojis = {mci: '🟢', mild: '🟡', moderate: '🟠', severe: '🔴'};
         document.getElementById('minicog-emoji').textContent = emojis[result.suggested_stage] || '🧠';
         document.getElementById('minicog-stage-text').textContent = result.description;
-        document.getElementById('minicog-desc').textContent =
-            `Score: ${result.total_score}/5 — ${wordsRecalled} words recalled, Clock: ${clockScore === 2 ? 'Normal' : clockScore === 1 ? 'Partial' : 'Unable'}`;
+        
+        const clockLabel = clockScore === 2 ? ot.clockNormal : clockScore === 1 ? ot.clockPartial : ot.clockUnable;
+        document.getElementById('minicog-desc').textContent = ot.scoreLabel(result.total_score, wordsRecalled, clockLabel);
 
         document.getElementById('minicog-result').style.display = 'block';
         document.getElementById('submit-btn').style.display = 'none';
         document.getElementById('back-btn-3').style.display = 'none';
         document.getElementById('finish-btn').style.display = 'block';
 
-        if ('speechSynthesis' in window) {
-            const msg = `Memory check complete. ${result.description}. Now let's start your brain exercises!`;
-            const u = new SpeechSynthesisUtterance(msg);
-            u.rate = 0.8;
-            setTimeout(() => speechSynthesis.speak(u), 200);
-        }
+        speakText(ot.completeMsg(result.description));
     }).catch(err => {
         alert('Error evaluating. Please try again.');
     });
@@ -240,7 +369,7 @@ function submitMiniCog() {
 function completeOnboarding() {
     const finBtn = document.getElementById('finish-btn');
     finBtn.disabled = true;
-    finBtn.textContent = '⏳ Setting up...';
+    finBtn.textContent = '⏳ ...';
 
     const payload = {
         step: 'complete',
@@ -256,10 +385,9 @@ function completeOnboarding() {
             window.location.href = res.redirect || '/dashboard';
         } else {
             finBtn.disabled = false;
-            finBtn.textContent = '🎮 START BRAIN EXERCISES →';
+            finBtn.textContent = '{{ t.get("start_exercises_btn", "🎮 START BRAIN EXERCISES →") }}';
         }
     }).catch(() => {
-        // Fallback redirect
         window.location.href = '/dashboard';
     });
 }
@@ -267,14 +395,10 @@ function completeOnboarding() {
 // Auto-speak welcome on load
 window.addEventListener('load', () => {
     const name = "{{ name }}";
-    if ('speechSynthesis' in window) {
-        const msg = name
-            ? `Welcome ${name}! Let's do a quick memory check to get started.`
-            : "Welcome! Let's do a quick memory check before your brain exercises.";
-        const u = new SpeechSynthesisUtterance(msg);
-        u.rate = 0.8;
-        setTimeout(() => speechSynthesis.speak(u), 800);
-    }
+    const ot = getObTxt();
+    setTimeout(() => {
+        speakText(ot.welcome(name));
+    }, 800);
 });
 </script>
 {% endblock %}

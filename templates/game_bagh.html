@@ -1,23 +1,23 @@
 {% extends "base.html" %}
-{% block title %}Bagh-Baak — Tiger Hunt | NeuroLearn 2.0{% endblock %}
+{% block title %}{{ t.get('bagh_title', 'Bagh-Baak — Tiger Hunt') }} | NeuroLearn 2.0{% endblock %}
 {% block content %}
 <div class="game-container">
     <div class="game-header">
         <h1 class="game-title" style="font-family: var(--font-heading);">
-            <i class="ph ph-paw-print"></i> Bagh-Baak — Tiger Hunt
+            <i class="ph ph-paw-print"></i> {{ t.get('bagh_title', 'Bagh-Baak — Tiger Hunt') }}
         </h1>
         <p class="game-instruction" id="game-instruction">
-            Place your goats to surround the tiger. Don't let the tiger eat your goats!
+            {{ t.get('bagh_instruction', "Place your goats to surround the tiger. Don't let the tiger eat your goats!") }}
         </p>
         <button class="btn-tts-hero mt-16" onclick="speakText(document.getElementById('game-instruction').textContent)" style="font-size:14px; padding:8px 16px;">
-            <i class="fas fa-volume-up"></i> Read Aloud
+            <i class="fas fa-volume-up"></i> {{ t.get('btn_read_aloud', 'Read Aloud') }}
         </button>
     </div>
 
     <div class="game-stats">
-        <div class="game-stat"><span style="color: var(--secondary);">🐐</span> <span id="goats-left">8</span> goats</div>
-        <div class="game-stat"><span style="color: var(--accent);">💀</span> <span id="goats-eaten">0</span> eaten</div>
-        <div class="game-stat"><span style="color: var(--primary);">🏆</span> <span id="move-count">0</span> moves</div>
+        <div class="game-stat"><span style="color: var(--secondary);">🐐</span> <span id="goats-left">8</span> <span id="lbl-goats">{{ t.get('bagh_goats', 'goats') }}</span></div>
+        <div class="game-stat"><span style="color: var(--accent);">💀</span> <span id="goats-eaten">0</span> <span id="lbl-eaten">{{ t.get('bagh_eaten', 'eaten') }}</span></div>
+        <div class="game-stat"><span style="color: var(--primary);">🏆</span> <span id="move-count">0</span> <span id="lbl-moves">{{ t.get('bagh_moves', 'moves') }}</span></div>
         <div class="game-stat"><span>⏱️</span> <span id="timer">0:00</span></div>
     </div>
 
@@ -48,7 +48,7 @@
             <p id="result-msg" style="color: var(--text-secondary); margin:12px 0 24px;"></p>
             <div id="result-stats" style="margin-bottom:24px;"></div>
             <a href="/dashboard" class="btn-primary" style="width:auto; padding:14px 32px;">
-                ← Back to Home
+                ← {{ t.get('back_to_home', 'Back to Home') }}
             </a>
         </div>
     </div>
@@ -169,6 +169,121 @@ function validPlayer() {
     return [];
 }
 
+const BAGH_LOCALIZED = {
+    hi: {
+        phase1: 'चरण 1: बकरियों को रखें',
+        phase2: 'चरण 2: बाघ को घेरने के लिए बकरियों को चलाएं',
+        hintPlace: 'बकरी रखने के लिए चमकते बिंदु पर टैप करें।',
+        hintMove: 'एक बकरी चुनें, फिर पास वाले बिंदु पर ले जाएं।',
+        initSpeak: 'खाली स्थानों पर बकरियों को रखें। बाघ को रोकें!',
+        allPlacedSpeak: 'सभी बकरियां रख दी गईं! अब बाघ को घेरने के लिए उन्हें आगे बढ़ाएं।',
+        tigerCaught: 'बाघ ने एक बकरी पकड़ ली!',
+        wonTitle: 'आपने बाघ को घेर लिया!',
+        lostTitle: 'इस बार बाघ जीत गया!',
+        wonMsg: 'शानदार रणनीतिक सोच! आपका दिमाग बहुत तेज़ है।',
+        lostMsg: 'अच्छा प्रयास! बाघ को घेरने के लिए फिर से कोशिश करें।',
+        wonSpeak: 'बधाई हो! आपने बाघ को घेर लिया!',
+        lostSpeak: 'इस बार बाघ जीत गया। अच्छा प्रयास!',
+        statMoves: 'चालें',
+        statAvg: 'औसत',
+        statAcc: 'सटीकता'
+    },
+    mr: {
+        phase1: 'टप्पा 1: शेळ्या ठेवा',
+        phase2: 'टप्पा 2: वाघाला अडवण्यासाठी शेळ्या हलवा',
+        hintPlace: 'शेळी ठेवण्यासाठी चमकणाऱ्या बिंदूवर टॅप करा.',
+        hintMove: 'एका शेळीवर टॅप करा, मग जवळच्या बिंदूवर हलवा.',
+        initSpeak: 'रिकाम्या जागांवर शेळ्या ठेवा. वाघाला अडवा!',
+        allPlacedSpeak: 'सर्व शेळ्या ठेवल्या! आता वाघाला घेरण्यासाठी त्यांना हलवा.',
+        tigerCaught: 'वाघाने एक शेळी पकडली!',
+        wonTitle: 'तुम्ही वाघाला अडवले!',
+        lostTitle: 'या वेळी वाघ जिंकला!',
+        wonMsg: 'उत्कृष्ट रणनीती! तुमचा मेंदू खूप तीक्ष्ण आहे.',
+        lostMsg: 'छान प्रयत्न! वाघाला घेरण्यासाठी पुन्हा प्रयत्न करा.',
+        wonSpeak: 'अभिनंदन! तुम्ही वाघाला पकडले!',
+        lostSpeak: 'या वेळी वाघ जिंकला. छान प्रयत्न!',
+        statMoves: 'चाली',
+        statAvg: 'सरासरी',
+        statAcc: 'अचूकता'
+    },
+    as: {
+        phase1: 'পৰ্যায় ১: ছাগলীসমূহ বহুৱাওক',
+        phase2: 'পৰ্যায় ২: বাঘক ফান্দত পেলাবলৈ ছাগলী লৰচৰ কৰক',
+        hintPlace: 'ছাগলী বহুৱাবলৈ উজলি থকা স্থানত স্পৰ্শ কৰক।',
+        hintMove: 'এটা ছাগলীত স্পৰ্শ কৰক, তাৰ পিছত ওচৰৰ স্থানলৈ লৈ যাওক।',
+        initSpeak: 'খালী ঠাইত ছাগলী বহুৱাওক। বাঘক ভেট দিয়ক!',
+        allPlacedSpeak: 'সকলো ছাগলী বহুওৱা হ\'ল! এতিয়া বাঘক ফান্দত পেলাবলৈ আগবাঢ়ক।',
+        tigerCaught: 'বাঘটোৱে এটা ছাগলী ধৰিলে!',
+        wonTitle: 'আপুনি বাঘটো ফান্দত পেলালে!',
+        lostTitle: 'এইবাৰ বাঘটো জিকিল!',
+        wonMsg: 'চমৎকাৰ কৌশলপূৰ্ণ চিন্তা! আপোনাৰ বুদ্ধি অতি তীক্ষ্ণ।',
+        lostMsg: 'ভাল চেষ্টা! বাঘক চাৰিওফালৰ পৰা ঘেৰিবলৈ আকৌ চেষ্টা কৰক।',
+        wonSpeak: 'অভিনন্দন! আপুনি বাঘটো ফান্দত পেলালে!',
+        lostSpeak: 'এইবাৰ বাঘটো জিকিল। ভাল চেষ্টা!',
+        statMoves: 'খোজ',
+        statAvg: 'গড়',
+        statAcc: 'শুদ্ধতা'
+    },
+    bn: {
+        phase1: 'পর্যায় ১: ছাগলগুলোকে বসান',
+        phase2: 'পর্যায় ২: বাঘকে আটকাতে ছাগলগুলোকে সরান',
+        hintPlace: 'ছাগল বসাতে উজ্জ্বল বিন্দুতে স্পর্শ করুন।',
+        hintMove: 'একটি ছাগল স্পর্শ করুন, তারপর পাশের বিন্দুতে নিয়ে যান।',
+        initSpeak: 'খালি স্থানে ছাগলগুলো বসান। বাঘকে আটকে দিন!',
+        allPlacedSpeak: 'সব ছাগল বসানো শেষ! এবার বাঘকে ফাঁদে ফেলতে এগুলোকে সরান।',
+        tigerCaught: 'বাঘ একটি ছাগল ধরে ফেলেছে!',
+        wonTitle: 'আপনি বাঘটিকে আটকে ফেলেছেন!',
+        lostTitle: 'এবার বাঘ জিতেছে!',
+        wonMsg: 'দুর্দান্ত কৌশলপূর্ণ চিন্তা! আপনার বুদ্ধি বেশ প্রখর।',
+        lostMsg: 'ভালো চেষ্টা! বাঘকে ঘেরার জন্য আবার চেষ্টা করুন।',
+        wonSpeak: 'অভিনন্দন! আপনি বাঘটিকে ফাঁদে ফেলেছেন!',
+        lostSpeak: 'এবার বাঘ জিতেছে। ভালো চেষ্টা!',
+        statMoves: 'চাল',
+        statAvg: 'গড়',
+        statAcc: 'সঠিকতা'
+    },
+    mni: {
+        phase1: 'ফেজ ১: য়েলসি থম্বিয়ু',
+        phase2: 'ফেজ ২: শাওরোইবু ফাবগীদমক য়েলসি চংশিন্বিয়ু',
+        hintPlace: 'য়েল থম্বগীদমক ঙাল্লিবা মফমদা নম্মু।',
+        hintMove: 'য়েল অমা খনগৎলগা নক্নবা মফমদা চংশিন্বিয়ু।',
+        initSpeak: 'অহাংবা মফমদা য়েলসি থম্বিয়ু। শাওরোইবু থিংগদবনি!',
+        allPlacedSpeak: 'য়েল পুম্নমক থমখ্রে! হৌজিক শাওরোইবু কোনশিল্লু।',
+        tigerCaught: 'শাওরোইনা য়েল অমা ফারে!',
+        wonTitle: 'অদোমনা শাওরোইবু ফারে!',
+        lostTitle: 'হন্দক্কীদি শাওরোইনা ঙম্লে!',
+        wonMsg: 'অখন্নবা ৱাখল্লোন! অদোমগী ৱাখল য়াম্না হৈ।',
+        lostMsg: 'ফবা হোৎনবনি! শাওরোইবু কোনশিন্নবা অমুক্কা হোৎনৌ।',
+        wonSpeak: 'নুংঙাইবা ফাওই! অদোমনা শাওরোইবু ফারে!',
+        lostSpeak: 'অমুক্কা হোৎনৌ। হন্দক্কীদি শাওরোইনা ঙম্লে।',
+        statMoves: 'খোজ',
+        statAvg: 'চাংচৎ',
+        statAcc: 'চুম্বা'
+    },
+    en: {
+        phase1: 'Phase 1: Place your goats',
+        phase2: 'Phase 2: Move your goats to trap the tiger',
+        hintPlace: 'Tap a glowing intersection to place a goat.',
+        hintMove: 'Tap a goat, then tap an adjacent point to move.',
+        initSpeak: 'Place your goats on the empty spots. Block the tiger!',
+        allPlacedSpeak: 'All goats placed! Now move them to trap the tiger.',
+        tigerCaught: 'Tiger caught a goat!',
+        wonTitle: 'You trapped the tiger!',
+        lostTitle: 'Tiger wins this time!',
+        wonMsg: 'Excellent strategic thinking! Your brain is sharp.',
+        lostMsg: 'Good effort! Try again to surround the tiger.',
+        wonSpeak: 'Congratulations! You trapped the tiger!',
+        lostSpeak: 'The tiger won this time. Good effort!',
+        statMoves: 'moves',
+        statAvg: 's avg',
+        statAcc: '% accuracy'
+    }
+};
+
+function getBaghTxt() {
+    return BAGH_LOCALIZED[LANGUAGE] || BAGH_LOCALIZED['en'];
+}
+
 function init() {
     board.fill(null);
     const corners = [0,4,20,24];
@@ -176,11 +291,18 @@ function init() {
     goatsToPlace = CFG.goats; goatsOnBoard = 0; goatsEaten = 0;
     moveCount = 0; phase = 'place'; selGoat = null; over = false;
     dTimes = []; lastMove = Date.now();
+    
+    const bt = getBaghTxt();
+    const pb = document.getElementById('phase-badge');
+    if (pb) { pb.textContent = bt.phase1; pb.className = 'badge badge-green'; }
+    const ht = document.getElementById('hint-text');
+    if (ht) ht.textContent = bt.hintPlace;
+    
     draw(); updateUI();
     timerSec = 0;
     if (timerInt) clearInterval(timerInt);
     timerInt = setInterval(() => { timerSec++; document.getElementById('timer').textContent = fmt(timerSec); }, 1000);
-    speakText('Place your goats on the empty spots. Block the tiger!');
+    speakText(bt.initSpeak);
 }
 
 function draw() {
@@ -229,6 +351,7 @@ function draw() {
 
 function click_(p) {
     if (over) return;
+    const bt = getBaghTxt();
     
     if (phase === 'place') {
         if (board[p] !== null) return;
@@ -237,10 +360,10 @@ function click_(p) {
         
         if (goatsToPlace === 0) {
             phase = 'move';
-            document.getElementById('phase-badge').textContent = 'Phase 2: Move your goats';
+            document.getElementById('phase-badge').textContent = bt.phase2;
             document.getElementById('phase-badge').className = 'badge badge-forest';
-            document.getElementById('hint-text').textContent = 'Tap a goat, then tap where to move it.';
-            speakText('All goats placed! Now move them to trap the tiger.');
+            document.getElementById('hint-text').textContent = bt.hintMove;
+            speakText(bt.allPlacedSpeak);
         }
         draw(); updateUI();
         setTimeout(aiMove, 600);
@@ -261,6 +384,7 @@ function click_(p) {
 function aiMove() {
     if (over) return;
     const ts = tigers();
+    const bt = getBaghTxt();
     
     // Capture first
     for (const t of ts) {
@@ -269,7 +393,7 @@ function aiMove() {
             const m = c[Math.floor(Math.random()*c.length)];
             board[t] = null; board[m.to] = 'tiger'; board[m.cap] = null;
             goatsOnBoard--; goatsEaten++;
-            speakText('Tiger caught a goat!');
+            speakText(bt.tigerCaught);
             draw(); updateUI(); checkEnd(); return;
         }
     }
@@ -302,26 +426,24 @@ function endGame(won) {
     over = true; clearInterval(timerInt);
     document.getElementById('game-over-overlay').style.display = 'flex';
     
+    const bt = getBaghTxt();
     const avgDT = dTimes.length ? Math.round(dTimes.reduce((a,b)=>a+b,0)/dTimes.length/100)/10 : 0;
     const acc = moveCount ? Math.round((moveCount-goatsEaten)/moveCount*100) : 0;
     
     document.getElementById('result-icon').textContent = won ? '🏆' : '🐯';
-    document.getElementById('result-title').textContent = won ? 'You trapped the tiger!' : 'Tiger wins this time!';
-    document.getElementById('result-msg').textContent = won 
-        ? 'Excellent strategic thinking! Your brain is sharp.' 
-        : 'Good effort! Try again to surround the tiger.';
+    document.getElementById('result-title').textContent = won ? bt.wonTitle : bt.lostTitle;
+    document.getElementById('result-msg').textContent = won ? bt.wonMsg : bt.lostMsg;
     
     document.getElementById('result-stats').innerHTML = `
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-            <div class="game-stat">🦶 ${moveCount} moves</div>
+            <div class="game-stat">🦶 ${moveCount} ${bt.statMoves}</div>
             <div class="game-stat">⏱️ ${fmt(timerSec)}</div>
-            <div class="game-stat">🧠 ${avgDT}s avg</div>
-            <div class="game-stat">🎯 ${acc}% accuracy</div>
+            <div class="game-stat">🧠 ${avgDT}${bt.statAvg}</div>
+            <div class="game-stat">🎯 ${acc}${bt.statAcc}</div>
         </div>
     `;
     
-    const bs = (typeof BAGH_STRINGS !== 'undefined' && BAGH_STRINGS[LANGUAGE]) ? BAGH_STRINGS[LANGUAGE] : { won: 'Congratulations! You trapped the tiger!', lost: 'The tiger won this time. Good effort!' };
-    speakText(won ? bs.won : bs.lost);
+    speakText(won ? bt.wonSpeak : bt.lostSpeak);
     
     fetch('/api/game-complete', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -330,16 +452,6 @@ function endGame(won) {
         })
     }).catch(()=>{});
 }
-
-const BAGH_STRINGS = {
-    hi: { won: 'बधाई हो! आपने बाघ को घेर लिया!', lost: 'इस बार बाघ जीत गया। अच्छा प्रयास!' },
-    mr: { won: 'अभिनंदन! तुम्ही वाघाला पकडले!', lost: 'या वेळी वाघ जिंकला. छान प्रयत्न!' },
-    as: { won: 'অভিনন্দন! আপুনি বাঘটো ফান্দত পেলালে!', lost: 'এইবাৰ বাঘটো জিকিল। ভাল চেষ্টা!' },
-    bn: { won: 'অভিনন্দন! আপনি বাঘটিকে ফাঁদে ফেলেছেন!', lost: 'এবার বাঘ জিতেছে। ভালো চেষ্টা!' },
-    mni: { won: 'নুংঙাইবা ফাওই! অদোমনা শাওরোইবু ফারে!', lost: 'অমুক্কা হোৎনৌ।' },
-    ta: { won: 'வாழ்த்துகள்! நீங்கள் புலியைச் சிக்க வைத்தீர்கள்!', lost: 'புலி வென்றது. நல்ல முயற்சி!' },
-    en: { won: 'Congratulations! You trapped the tiger!', lost: 'The tiger won this time. Good effort!' }
-};
 
 function updateUI() {
     document.getElementById('goats-left').textContent = goatsToPlace > 0 ? goatsToPlace : goatsOnBoard;
@@ -369,7 +481,7 @@ function browserSpeakBagh(text) {
         speechSynthesis.cancel();
         const u = new SpeechSynthesisUtterance(text);
         u.rate = 0.8;
-        const bcp47 = LANGUAGE==='hi'?'hi-IN':LANGUAGE==='mr'?'mr-IN':LANGUAGE==='as'?'as-IN':LANGUAGE==='bn'?'bn-IN':LANGUAGE==='mni'?'bn-IN':'en-IN';
+        const bcp47 = LANGUAGE==='hi'?'hi-IN':LANGUAGE==='mr'?'mr-IN':LANGUAGE==='as'?'bn-IN':LANGUAGE==='bn'?'bn-IN':LANGUAGE==='mni'?'bn-IN':'en-IN';
         u.lang = bcp47;
         const voices = speechSynthesis.getVoices();
         const match = voices.find(v => v.lang.startsWith(bcp47.split('-')[0]));

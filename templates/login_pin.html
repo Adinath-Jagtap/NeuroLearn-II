@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Patient Login — NeuroLearn{% endblock %}
+{% block title %}{{ t['patient_login_title'] }} — NeuroLearn 2.0{% endblock %}
 {% block content %}
 <div class="auth-container" style="max-width: 440px; margin: 0 auto; padding-top: 40px;">
     <div class="auth-card" style="padding: 40px; border-radius: var(--radius-xl); border: 2px solid var(--border); background: var(--gradient-card);">
@@ -7,11 +7,14 @@
         <div style="text-align: center; margin-bottom: 32px;">
             <div style="font-size: 56px; margin-bottom: 12px;">🔑</div>
             <h1 class="auth-title" style="font-family: var(--font-heading); font-size: 28px; margin-bottom: 8px;">
-                Patient Login
+                {{ t['patient_login_title'] }}
             </h1>
             <p style="color: var(--text-secondary); font-size: 16px;">
-                Enter your code and 4-digit PIN to log in.
+                {{ t['patient_login_sub'] }}
             </p>
+            <button type="button" class="btn-tts-hero" onclick="speakText('{{ t['patient_login_title'] | escape }}. {{ t['patient_login_sub'] | escape }}', '{{ current_language }}')" style="font-size:13px; padding:6px 14px; margin-top:8px;">
+                <i class="fas fa-volume-up"></i> {{ t['hear_page'] }}
+            </button>
         </div>
 
         {% if error %}
@@ -23,10 +26,10 @@
         <form method="POST">
             <div style="margin-bottom: 20px;">
                 <label style="display: block; font-weight: 800; margin-bottom: 8px; color: var(--text-primary); font-size: 16px;">
-                    Patient Code
+                    {{ t['patient_code'] }}
                 </label>
                 <input type="text" name="patient_code" required
-                       placeholder="e.g. AB12CD"
+                       placeholder="{{ t['patient_code_placeholder'] }}"
                        maxlength="6"
                        style="width: 100%; padding: 18px 20px; border: 2.5px solid var(--border); border-radius: var(--radius-md); font-size: 28px; font-family: var(--font); background: var(--bg-card); color: var(--text-primary); text-align: center; letter-spacing: 6px; text-transform: uppercase; font-weight: 900;"
                        autofocus>
@@ -34,7 +37,7 @@
 
             <div style="margin-bottom: 28px;">
                 <label style="display: block; font-weight: 800; margin-bottom: 8px; color: var(--text-primary); font-size: 16px;">
-                    4-Digit PIN
+                    {{ t['four_digit_pin'] }}
                 </label>
                 <input type="number" name="pin" required
                        placeholder="••••"
@@ -45,16 +48,16 @@
             </div>
 
             <button type="submit" class="btn-primary" style="width: 100%; padding: 18px; font-size: 22px; font-weight: 800;">
-                Login →
+                {{ t['login_btn'] }}
             </button>
         </form>
 
         <div style="text-align: center; margin-top: 24px; display: flex; flex-direction: column; gap: 8px;">
             <a href="/login" style="color: var(--text-muted); font-size: 14px; font-weight: 600;">
-                Login with email instead
+                {{ t['login_email_instead'] }}
             </a>
             <p style="color: var(--text-muted); font-size: 13px;">
-                Ask your caregiver for your code and PIN.
+                {{ t['ask_caregiver_pin'] }}
             </p>
         </div>
     </div>

@@ -6,6 +6,7 @@
     {% if linked_patient_id %}
     <p class="cg-patient-info">
         Patient: <strong>{{ patient_name }}</strong> | 
+        {% if patient_code %}Patient Code: <strong style="font-family:monospace; background:rgba(255,255,255,0.85); padding:4px 10px; border-radius:6px; letter-spacing:2px; font-size:16px; border:1.5px solid var(--border); color:var(--primary-dark);">{{ patient_code }}</strong> | {% endif %}
         Stage: <strong>{{ profile.get('dementia_stage', 'N/A') | capitalize }}</strong> |
         Age: <strong>{{ profile.get('age', 'N/A') }}</strong> |
         Region: <strong>{{ profile.get('region', 'N/A') }}</strong>

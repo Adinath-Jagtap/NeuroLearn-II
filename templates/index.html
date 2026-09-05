@@ -1,21 +1,21 @@
 {% extends "base.html" %}
-{% block title %}NeuroLearn 2.0 — Brain Exercise Companion{% endblock %}
+{% block title %}{{ t['app_title'] }} — {{ t['tagline'] }}{% endblock %}
 {% block content %}
 <div class="landing-container">
     <!-- Hero Section -->
     <div class="hero-section">
-        <div class="hero-badge">🧠 COGNITIVE CARE PLATFORM</div>
+        <div class="hero-badge">{{ t['hero_badge'] }}</div>
         <h1 class="hero-title">
-            Your Daily<br>
-            <span class="hero-highlight">Brain Exercise</span><br>
-            Companion
+            {{ t['hero_title_1'] }}<br>
+            <span class="hero-highlight">{{ t['hero_title_2'] }}</span><br>
+            {{ t['hero_title_3'] }}
         </h1>
         <p class="hero-subtitle">
-            AI-powered cognitive games and memory assistance for elderly care
+            {{ t['hero_subtitle'] }}
         </p>
         
-        <button class="btn-tts-hero" onclick="speakText('Welcome to NeuroLearn 2.0. Your daily brain exercise companion. Choose your role to get started.')">
-            <i class="fas fa-volume-up"></i> Hear This Page
+        <button class="btn-tts-hero" onclick="speakText('{{ t['hero_welcome_speech'] | escape }}', '{{ current_language }}')">
+            <i class="fas fa-volume-up"></i> {{ t['hear_this_page'] }}
         </button>
     </div>
 
@@ -25,16 +25,16 @@
             {% if session.get('role') in ('caregiver', 'doctor') %}
             <a href="/caregiver-dashboard" class="hero-card hero-card-caregiver">
                 <div class="hero-card-icon">📊</div>
-                <h3>My Dashboard</h3>
-                <p>View patient progress & care notes</p>
-                <span class="hero-card-btn">GO TO DASHBOARD →</span>
+                <h3>{{ t['my_dashboard'] }}</h3>
+                <p>{{ t['view_patient_progress'] }}</p>
+                <span class="hero-card-btn">{{ t['go_to_dashboard'] }}</span>
             </a>
             {% else %}
             <a href="/dashboard" class="hero-card hero-card-patient">
                 <div class="hero-card-icon">👴</div>
-                <h3>Continue Exercises</h3>
-                <p>Resume your daily brain training</p>
-                <span class="hero-card-btn">GO →</span>
+                <h3>{{ t['continue_exercises'] }}</h3>
+                <p>{{ t['resume_training'] }}</p>
+                <span class="hero-card-btn">{{ t['go_btn'] }}</span>
             </a>
             {% endif %}
         </div>
@@ -43,28 +43,28 @@
         <div class="hero-cards">
             <a href="/login-pin" class="hero-card hero-card-patient" id="card-patient">
                 <div class="hero-card-icon">👴</div>
-                <h3>I'm a Patient</h3>
-                <p>Easy login with your 4-digit PIN or caregiver link</p>
-                <span class="hero-card-btn">ENTER WITH PIN →</span>
+                <h3>{{ t['im_patient'] }}</h3>
+                <p>{{ t['patient_card_sub'] }}</p>
+                <span class="hero-card-btn">{{ t['enter_with_pin'] }}</span>
             </a>
             
             <a href="/signup?role=caregiver" class="hero-card hero-card-caregiver" id="card-caregiver">
                 <div class="hero-card-icon">👨‍👩‍👧</div>
-                <h3>I'm a Caregiver</h3>
-                <p>Register first to set up patient care & generate invite link</p>
-                <span class="hero-card-btn">REGISTER CAREGIVER →</span>
+                <h3>{{ t['im_caregiver'] }}</h3>
+                <p>{{ t['caregiver_card_sub'] }}</p>
+                <span class="hero-card-btn">{{ t['register_caregiver'] }}</span>
             </a>
             
             <a href="/signup?role=doctor" class="hero-card" id="card-doctor" style="border:3px solid #3B82F6; box-shadow:0 6px 0 #1D4ED8;">
                 <div class="hero-card-icon">👨‍⚕️</div>
-                <h3>I'm a Doctor</h3>
-                <p>View reports, location & clinical assessments</p>
-                <span class="hero-card-btn" style="background:#3B82F6;">VIEW REPORTS →</span>
+                <h3>{{ t['im_doctor'] }}</h3>
+                <p>{{ t['doctor_card_sub'] }}</p>
+                <span class="hero-card-btn" style="background:#3B82F6;">{{ t['view_reports'] }}</span>
             </a>
         </div>
         
         <div class="hero-login">
-            Already have an account? <a href="/login">Log in here</a>
+            {{ t['already_have_account'] }} <a href="/login">{{ t['login_here'] }}</a>
         </div>
     {% endif %}
 
@@ -72,61 +72,39 @@
     <div class="features-grid">
         <div class="feature-card">
             <div class="feature-icon">🎮</div>
-            <h4>Cognitive Games</h4>
-            <p>Pattern recall and recognition exercises</p>
+            <h4>{{ t['feat_games_title'] }}</h4>
+            <p>{{ t['feat_games_sub'] }}</p>
         </div>
         <div class="feature-card">
             <div class="feature-icon">🤖</div>
-            <h4>AI Companion</h4>
-            <p>Warm memory conversations</p>
+            <h4>{{ t['feat_comp_title'] }}</h4>
+            <p>{{ t['feat_comp_sub'] }}</p>
         </div>
         <div class="feature-card">
             <div class="feature-icon">📊</div>
-            <h4>Progress Tracking</h4>
-            <p>Cognitive health reports</p>
+            <h4>{{ t['feat_prog_title'] }}</h4>
+            <p>{{ t['feat_prog_sub'] }}</p>
         </div>
         <div class="feature-card">
             <div class="feature-icon">🔊</div>
-            <h4>Voice Support</h4>
-            <p>Everything reads aloud</p>
+            <h4>{{ t['feat_voice_title'] }}</h4>
+            <p>{{ t['feat_voice_sub'] }}</p>
         </div>
         <div class="feature-card">
             <div class="feature-icon">🆘</div>
-            <h4>Emergency SOS</h4>
-            <p>One-tap help with location</p>
+            <h4>{{ t['feat_sos_title'] }}</h4>
+            <p>{{ t['feat_sos_sub'] }}</p>
         </div>
         <div class="feature-card">
             <div class="feature-icon">📍</div>
-            <h4>Live Location</h4>
-            <p>Share location with doctor</p>
+            <h4>{{ t['feat_gps_title'] }}</h4>
+            <p>{{ t['feat_gps_sub'] }}</p>
         </div>
     </div>
     
     <div class="landing-footer">
-        <p>Built for elderly dementia patients in North-East India 🇮🇳</p>
+        <p>{{ t['footer_built_for'] }}</p>
         <p class="landing-footer-sub">SIH26003 | MDoNER | MedTech / HealthTech</p>
     </div>
 </div>
-{% endblock %}
-{% block scripts %}
-<script>
-function speakText(text) {
-    fetch('/api/tts/speak', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({text: text, lang: 'en'})
-    }).then(r => r.blob()).then(blob => {
-        const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        audio.play();
-    }).catch(e => {
-        // Fallback to browser TTS
-        if ('speechSynthesis' in window) {
-            const u = new SpeechSynthesisUtterance(text);
-            u.rate = 0.85;
-            speechSynthesis.speak(u);
-        }
-    });
-}
-</script>
 {% endblock %}

@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Sign Up — NeuroLearn 2.0{% endblock %}
+{% block title %}{{ t['nav_signup'] }} — {{ t['app_title'] }}{% endblock %}
 {% block content %}
 <div class="auth-container">
     <div class="auth-card">
         <h1 class="auth-title">
-            {% if role == 'doctor' %}👨‍⚕️ Doctor Account{% else %}👨‍👩‍👧 Caregiver Account{% endif %}
+            {% if role == 'doctor' %}{{ t['doctor_account'] }}{% else %}{{ t['caregiver_account'] }}{% endif %}
         </h1>
-        <p class="auth-subtitle">Create your account to manage your patient's care</p>
+        <p class="auth-subtitle">{{ t['create_account_sub'] }}</p>
         
         {% for error in errors %}
         <div class="form-error">{{ error }}</div>
@@ -16,37 +16,37 @@
             <input type="hidden" name="role" value="{{ role }}">
             
             <div class="form-group">
-                <label class="form-label">Your Full Name</label>
+                <label class="form-label">{{ t['full_name'] }}</label>
                 <input type="text" name="name" class="form-input" value="{{ name }}" placeholder="e.g. Priya Sharma" required>
             </div>
             <div class="form-group">
-                <label class="form-label">Email Address</label>
+                <label class="form-label">{{ t['email_address'] }}</label>
                 <input type="email" name="email" class="form-input" value="{{ email }}" placeholder="your@email.com" required>
             </div>
             <div class="form-group">
-                <label class="form-label">Password</label>
-                <input type="password" name="password" class="form-input" placeholder="At least 6 characters" required minlength="6">
+                <label class="form-label">{{ t['password'] }}</label>
+                <input type="password" name="password" class="form-input" placeholder="••••••••" required minlength="6">
             </div>
             <div class="form-group">
-                <label class="form-label">Confirm Password</label>
-                <input type="password" name="confirm_password" class="form-input" placeholder="Type password again" required>
+                <label class="form-label">{{ t['confirm_password'] }}</label>
+                <input type="password" name="confirm_password" class="form-input" placeholder="••••••••" required>
             </div>
             
-            <button type="submit" class="btn-primary btn-big">CREATE ACCOUNT</button>
+            <button type="submit" class="btn-primary btn-big">{{ t['create_account_btn'] }}</button>
         </form>
         
         <div style="margin-top:24px; padding:16px; background:var(--primary-light); border-radius:var(--radius-md); border:2px solid var(--primary);">
             <p style="font-size:15px; color:var(--text-secondary); text-align:center; line-height:1.6;">
-                👴 <strong>Patient?</strong> You don't need to register.<br>
-                Your caregiver will set up your account and give you a <strong>4-digit PIN</strong> + invite link.
+                👴 <strong>{{ t['patient_no_register'] }}</strong><br>
+                {{ t['patient_caregiver_setup'] }}
             </p>
             <a href="/login-pin" class="btn-secondary" style="display:block; text-align:center; margin-top:12px; text-decoration:none;">
-                🔑 Patient PIN Login
+                🔑 {{ t['pin_login'] }}
             </a>
         </div>
         
         <p class="text-center mt-24 text-muted" style="font-size: 16px;">
-            Already have an account? <a href="/login">Log in here</a>
+            {{ t['already_have_account'] }} <a href="/login">{{ t['login_here'] }}</a>
         </p>
 
         {% if role == 'caregiver' %}

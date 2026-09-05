@@ -871,8 +871,9 @@ def dashboard():
     except Exception as e:
         print(f"⚠️ [SYNC] User sync error: {e}")
 
-    # Get daily routine
-    routine = get_daily_routine()
+    # Get daily routine in patient's preferred language
+    current_lang = session.get("preferred_language") or profile.get("language") or "en"
+    routine = get_daily_routine(current_lang)
     
     # Check game history for today's completions
     game_results = []
@@ -917,7 +918,7 @@ def game(game_type):
         return redirect(url_for("dashboard"))
     
     profile = session.get("patient_profile", {})
-    language = profile.get("language", "en")
+    language = session.get("preferred_language") or profile.get("language", "en")
     
     # Get adaptive difficulty
     game_history = session.get("game_history", [])
@@ -942,7 +943,7 @@ def game(game_type):
 def api_game_data(game_type):
     """Generate game content via cognitive engine. Uses family photos if available."""
     profile = session.get("patient_profile", {})
-    language = profile.get("language", "en")
+    language = session.get("preferred_language") or profile.get("language", "en")
     user_id = session["user_id"]
     
     game_history = session.get("game_history", [])
@@ -1251,6 +1252,7 @@ def get_linked_patient_data(linked_patient_id):
     patient_name = "Patient"
     family_photos = []
     patient_code = ""
+    patient_pin = ""
     
     if linked_patient_id:
         try:
@@ -1259,6 +1261,7 @@ def get_linked_patient_data(linked_patient_id):
                 patient_data = patient_doc.to_dict()
                 patient_name = patient_data.get('patient_name', patient_data.get('name', 'Patient'))
                 patient_code = patient_data.get('patient_code', '')
+                patient_pin = patient_data.get('pin', '')
                 if patient_data.get('patient_profile_json'):
                     profile = json.loads(patient_data['patient_profile_json'])
         except Exception as e:
@@ -1294,6 +1297,7 @@ def get_linked_patient_data(linked_patient_id):
         'profile': profile,
         'patient_name': patient_name,
         'patient_code': patient_code,
+        'pin': patient_pin,
         'game_results': game_results,
         'last_location': last_location,
         'family_photos': family_photos,
@@ -1331,11 +1335,15 @@ def caregiver_dashboard():
     linked_patient_id = session.get("linked_patient_id")
     assigned_doctor_name = ""
     assigned_doctor_email = ""
+    patient_code = ""
+    patient_pin = ""
     
     if linked_patient_id:
         patient_data = get_linked_patient_data(linked_patient_id)
         profile = patient_data['profile']
         patient_name = patient_data['patient_name']
+        patient_code = patient_data.get('patient_code', '')
+        patient_pin = patient_data.get('pin', '')
         game_results = patient_data['game_results']
         last_location = patient_data['last_location']
         family_photos = patient_data['family_photos']
@@ -1345,6 +1353,8 @@ def caregiver_dashboard():
         # Caregiver not linked yet
         profile = session.get("patient_profile", {})
         patient_name = profile.get("patient_name", session.get("name", "Patient"))
+        patient_code = profile.get("patient_code", "")
+        patient_pin = ""
         game_results = []
         last_location = {}
         family_photos = []
@@ -1364,6 +1374,8 @@ def caregiver_dashboard():
     
     return render_template("caregiver_dashboard.html",
                            patient_name=patient_name,
+                           patient_code=patient_code,
+                           patient_pin=patient_pin,
                            profile=profile,
                            domain_scores=domain_scores,
                            overall_score=overall_score,
@@ -1427,6 +1439,7 @@ def doctor_dashboard():
     
     return render_template("doctor_dashboard.html",
                            patient_name=patient_name,
+                           patient_code=patient_data.get('patient_code', '') if linked_patient_id else '',
                            profile=profile,
                            domain_scores=domain_scores,
                            overall_score=overall_score,
@@ -1535,8 +1548,10 @@ def api_patient_pin():
     try:
         p_doc = db.collection('users').document(str(linked_patient_id)).get()
         if p_doc.exists:
-            pin = p_doc.to_dict().get('pin', '')
-            return jsonify({"success": True, "pin": pin})
+            p_dict = p_doc.to_dict()
+            pin = p_dict.get('pin', '')
+            patient_code = p_dict.get('patient_code', '')
+            return jsonify({"success": True, "pin": pin, "patient_code": patient_code})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     return jsonify({"error": "Patient not found"}), 404
@@ -1678,25 +1693,64 @@ def api_link_patient():
 @app.route("/report")
 @login_required
 def cognitive_report():
-    profile = session.get("patient_profile", {})
-    patient_name = profile.get("patient_name", "Patient")
+    user_id = session.get("user_id")
+    role = session.get("role", "patient")
+    target_patient_id = request.args.get("patient_id") or session.get("linked_patient_id")
     
+    profile = {}
+    patient_name = "Patient"
     game_results = []
-    try:
-        user_id = session["user_id"]
-        docs = db.collection('game_results').where('user_id', '==', user_id).get()
-        game_results = [d.to_dict() for d in docs]
-    except:
-        pass
+    patient_code = ""
+    
+    if role in ("caregiver", "doctor") and target_patient_id:
+        patient_data = get_linked_patient_data(target_patient_id)
+        profile = patient_data.get('profile', {})
+        patient_name = patient_data.get('patient_name', 'Patient')
+        game_results = patient_data.get('game_results', [])
+        patient_code = patient_data.get('patient_code', '')
+    else:
+        # Patient view
+        profile = session.get("patient_profile", {})
+        patient_name = profile.get("patient_name") or session.get("name", "Patient")
+        patient_code = profile.get("patient_code", "")
+        
+        # If profile missing from session, fetch from Firestore
+        if not profile:
+            try:
+                u_doc = db.collection('users').document(str(user_id)).get()
+                if u_doc.exists:
+                    u_data = u_doc.to_dict()
+                    patient_name = u_data.get('patient_name', u_data.get('name', 'Patient'))
+                    patient_code = u_data.get('patient_code', '')
+                    if u_data.get('patient_profile_json'):
+                        profile = json.loads(u_data['patient_profile_json'])
+            except Exception as e:
+                print(f"⚠️ [REPORT] User fetch error: {e}")
+        
+        # Load game results from Firestore
+        try:
+            docs = db.collection('game_results').where('user_id', '==', user_id).get()
+            game_results = [d.to_dict() for d in docs]
+        except Exception as e:
+            print(f"⚠️ [REPORT] Game results fetch error: {e}")
+        
+        # Also combine with any game results from current session
+        session_games = session.get("game_history", [])
+        if session_games:
+            existing_ts = {g.get("timestamp") for g in game_results if g.get("timestamp")}
+            for sg in session_games:
+                if sg.get("timestamp") not in existing_ts:
+                    game_results.append(sg)
     
     domain_scores = calculate_domain_scores(game_results)
     overall_score = calculate_overall_score(domain_scores)
     
     total_games = len(game_results)
-    avg_accuracy = round(sum(g.get("accuracy", 0) for g in game_results) / max(1, total_games))
+    avg_accuracy = round(sum(g.get("accuracy", 0) for g in game_results) / max(1, total_games)) if total_games > 0 else 0
     
     return render_template("cognitive_report.html",
                            patient_name=patient_name,
+                           patient_code=patient_code,
                            profile=profile,
                            domain_scores=domain_scores,
                            overall_score=overall_score,
@@ -1709,19 +1763,37 @@ def cognitive_report():
 @login_required
 def api_email_report():
     """Email cognitive report to doctor."""
-    profile = session.get("patient_profile", {})
-    doctor_email = profile.get("doctor_email")
+    user_id = session.get("user_id")
+    role = session.get("role", "patient")
+    target_patient_id = request.args.get("patient_id") or session.get("linked_patient_id")
     
+    profile = {}
+    patient_name = "Patient"
+    game_results = []
+    
+    if role in ("caregiver", "doctor") and target_patient_id:
+        patient_data = get_linked_patient_data(target_patient_id)
+        profile = patient_data.get('profile', {})
+        patient_name = patient_data.get('patient_name', 'Patient')
+        game_results = patient_data.get('game_results', [])
+    else:
+        profile = session.get("patient_profile", {})
+        patient_name = profile.get("patient_name") or session.get("name", "Patient")
+        try:
+            docs = db.collection('game_results').where('user_id', '==', user_id).get()
+            game_results = [d.to_dict() for d in docs]
+        except:
+            pass
+        session_games = session.get("game_history", [])
+        if session_games:
+            existing_ts = {g.get("timestamp") for g in game_results if g.get("timestamp")}
+            for sg in session_games:
+                if sg.get("timestamp") not in existing_ts:
+                    game_results.append(sg)
+                    
+    doctor_email = profile.get("doctor_email")
     if not doctor_email:
         return jsonify({"error": "No doctor email configured"}), 400
-    
-    game_results = []
-    try:
-        user_id = session["user_id"]
-        docs = db.collection('game_results').where('user_id', '==', user_id).get()
-        game_results = [d.to_dict() for d in docs]
-    except:
-        pass
     
     domain_scores = calculate_domain_scores(game_results)
     overall_score = calculate_overall_score(domain_scores)
@@ -1734,7 +1806,7 @@ def api_email_report():
     }
     
     success = send_doctor_report(
-        profile.get("patient_name", "Patient"),
+        patient_name,
         doctor_email,
         report_data
     )
@@ -1996,9 +2068,9 @@ def api_cognitive_trends():
 # --- DAILY ROUTINE API ---
 
 @app.route("/api/daily-routine")
-@login_required
 def api_daily_routine():
-    routine = get_daily_routine()
+    lang = request.args.get("lang") or session.get("preferred_language") or "en"
+    routine = get_daily_routine(lang)
     return jsonify({"routine": routine})
 
 

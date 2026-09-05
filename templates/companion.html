@@ -100,8 +100,10 @@ async function sendMessage() {
             const fallbacks = {
                 mr: 'माफ करा, मला नीट कळले नाही. कृपया पुन्हा सांगाल का? 😊',
                 hi: 'माफ कीजिए, मुझे सुनाई नहीं दिया। क्या आप फिर से कह सकते हैं? 😊',
-                as: 'মাফ কৰিব, মই ভালদরে বুজিব পরা নাইলোং৷ আথাই আবাৰ কৰাৱকৈ কব, নোলোগে? 😊',
-                ta: 'மன்னிக்கூம், தயவுசெய்து மீண்டும் சோல்லுங்களா? 😊',
+                as: 'মাফ কৰিব, মই ভালদৰে বুজি নাপালোঁ। আকৌ এবাৰ ক\'ব নেকি? 😊',
+                bn: 'মাফ করবেন, আমি ঠিক বুঝতে পারিনি। দয়া করে আবার বলবেন? 😊',
+                mni: 'ঙাকপীয়ু, ঐনা ফনা তাদে। অমুক্কা হায়বীয়ু? 😊',
+                ta: 'மன்னிக்கவும், தயவுசெய்து மீண்டும் சொல்லுங்களா? 😊',
                 en: "I'm sorry, I had a little trouble there. Could you say that again? 😊"
             };
             addBubble(fallbacks[lang] || fallbacks.en, 'ai');
@@ -112,8 +114,10 @@ async function sendMessage() {
         const connFallbacks = {
             mr: 'आत्ता कनेक्शन मध्ये समस्या आहे. थोड्या वेळाने पुन्हा प्रयत्न करू. 💚',
             hi: 'अभी कनेक्शन में समस्या है। थोड़ी देर बाद फिर कोशिश करते हैं। 💚',
-            as: 'এতিয়া সংযোগত সমস্যা আছে৷ পাছত আবাৰ চেষ্টা কৰোঁ৷ 💚',
-            ta: 'இப்போது இணைப்பில் சிக்கல் உள்ளது. கொஞ்சம் பழகி மீண்டும் முயற்சிக்கலாம். 💚',
+            as: 'এতিয়া সংযোগত সমস্যা হৈছে। অলপ পিছত আকৌ চেষ্টা কৰোঁ আহক। 💚',
+            bn: 'এখন সংযোগে সমস্যা হচ্ছে। কিছুক্ষণ পর আবার চেষ্টা করি। 💚',
+            mni: 'হৌজিক কনেক্সনগী খুদোংচাদবা লৈরি। খরা লৈরগা অমুক হোৎনসি। 💚',
+            ta: 'இப்போது இணைப்பில் சிக்கல் உள்ளது. கொஞ்சம் கழித்து மீண்டும் முயற்சிக்கலாம். 💚',
             en: "I'm having trouble connecting right now. Let's try again in a moment. 💚"
         };
         addBubble(connFallbacks[lang] || connFallbacks.en, 'ai');
@@ -128,7 +132,7 @@ function addBubble(text, type) {
     bubble.className = `chat-bubble ${type}`;
     
     if (type === 'ai') {
-        bubble.innerHTML = `<div class="chat-sender">🤖 Companion</div>${text}`;
+        bubble.innerHTML = `<div class="chat-sender">🤖 {{ t.get('nav_companion', 'Companion') }}</div>${text}`;
     } else {
         bubble.textContent = text;
     }
@@ -159,11 +163,11 @@ function removeTypingIndicator(id) {
 }
 
 function speakText(text) {
-    // Try server TTS first, fallback to browser
+    const activeLang = document.getElementById('lang-select')?.value || LANG || 'en';
     fetch('/api/tts/speak', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({text: text, lang: LANG})
+        body: JSON.stringify({text: text, lang: activeLang})
     }).then(r => {
         if (r.ok) return r.blob();
         throw new Error('TTS failed');
@@ -177,9 +181,20 @@ function speakText(text) {
 function browserSpeak(text) {
     if ('speechSynthesis' in window) {
         speechSynthesis.cancel();
+        const activeLang = document.getElementById('lang-select')?.value || LANG || 'en';
         const u = new SpeechSynthesisUtterance(text);
         u.rate = 0.8;
-        u.lang = LANG === 'hi' ? 'hi-IN' : LANG === 'mr' ? 'mr-IN' : LANG === 'as' ? 'as-IN' : LANG === 'bn' ? 'bn-IN' : LANG === 'mni' ? 'bn-IN' : LANG === 'ta' ? 'ta-IN' : 'en-US';
+        const bcp47 = activeLang === 'hi' ? 'hi-IN' 
+                    : activeLang === 'mr' ? 'mr-IN' 
+                    : activeLang === 'as' ? 'bn-IN' 
+                    : activeLang === 'bn' ? 'bn-IN' 
+                    : activeLang === 'mni' ? 'bn-IN' 
+                    : activeLang === 'ta' ? 'ta-IN' 
+                    : 'en-IN';
+        u.lang = bcp47;
+        const voices = speechSynthesis.getVoices();
+        const match = voices.find(v => v.lang.startsWith(bcp47.split('-')[0]));
+        if (match) u.voice = match;
         speechSynthesis.speak(u);
     }
 }
@@ -190,16 +205,38 @@ function startVoiceInput() {
         return;
     }
     
+    if ('speechSynthesis' in window) {
+        speechSynthesis.cancel();
+    }
+    
     const btn = document.getElementById('voice-chat-btn');
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const rec = new SpeechRecognition();
-    rec.lang = LANG === 'hi' ? 'hi-IN' : LANG === 'mr' ? 'mr-IN' : LANG === 'as' ? 'as-IN' : LANG === 'bn' ? 'bn-IN' : LANG === 'mni' ? 'bn-IN' : LANG === 'ta' ? 'ta-IN' : 'en-US';
+    
+    const activeLang = document.getElementById('lang-select')?.value || LANG || 'en';
+    const recMap = {
+        'hi': 'hi-IN',
+        'mr': 'mr-IN',
+        'bn': 'bn-IN',
+        'as': 'bn-IN',
+        'mni': 'bn-IN',
+        'ta': 'ta-IN',
+        'en': 'en-IN'
+    };
+    rec.lang = recMap[activeLang] || 'en-IN';
     rec.continuous = false;
     rec.interimResults = false;
     
     rec.onstart = () => btn.classList.add('listening');
     rec.onend = () => btn.classList.remove('listening');
-    rec.onerror = () => btn.classList.remove('listening');
+    rec.onerror = (e) => {
+        console.warn('Speech recognition error:', e.error);
+        if (e.error === 'language-not-supported' && rec.lang !== 'en-IN') {
+            rec.lang = 'en-IN';
+            try { rec.start(); return; } catch(err) {}
+        }
+        btn.classList.remove('listening');
+    };
     
     rec.onresult = (e) => {
         const transcript = e.results[0][0].transcript;
@@ -207,7 +244,11 @@ function startVoiceInput() {
         sendMessage();
     };
     
-    rec.start();
+    try {
+        rec.start();
+    } catch(err) {
+        console.warn('Recognition start exception:', err);
+    }
 }
 </script>
 {% endblock %}

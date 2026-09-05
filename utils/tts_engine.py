@@ -27,10 +27,19 @@ LANGUAGE_VOICE_MAP = {
 
 def get_voice_for_language(preferred_language, gender_key="standard_female"):
     """Get the appropriate TTS voice for a given language and gender."""
-    if not preferred_language or preferred_language == "en":
-        return None  # Use default English voice
+    if not preferred_language:
+        return None
+    lang = preferred_language.lower().strip()[:3]
+    if lang.startswith("mn"): lang = "mni"
+    elif lang.startswith("as"): lang = "as"
+    elif lang.startswith("bn"): lang = "bn"
+    elif lang.startswith("hi"): lang = "hi"
+    elif lang.startswith("mr"): lang = "mr"
+    elif lang.startswith("ta"): lang = "ta"
+    elif lang.startswith("te"): lang = "te"
+    elif lang.startswith("en"): return None
     
-    voices = LANGUAGE_VOICE_MAP.get(preferred_language)
+    voices = LANGUAGE_VOICE_MAP.get(lang)
     if not voices:
         return None
     

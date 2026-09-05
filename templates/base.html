@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ current_language }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -28,28 +28,27 @@
             </a>
             
             <div class="nav-actions">
+                <!-- Language Selector — Always available on all pages -->
+                <select id="lang-select" class="lang-select" onchange="setLanguage(this.value)" aria-label="Select Language">
+                    <option value="en" {% if current_language=='en' %}selected{% endif %}>EN — English</option>
+                    <option value="hi" {% if current_language=='hi' %}selected{% endif %}>हिंदी</option>
+                    <option value="mr" {% if current_language=='mr' %}selected{% endif %}>मराठी</option>
+                    <option value="as" {% if current_language=='as' %}selected{% endif %}>অসমীয়া</option>
+                    <option value="bn" {% if current_language=='bn' %}selected{% endif %}>বাংলা</option>
+                    <option value="mni" {% if current_language=='mni' %}selected{% endif %}>মৈতৈ</option>
+                </select>
+                
+                <!-- Read Aloud Button — Always available -->
+                <button class="btn-icon" onclick="readPageAloud()" title="{{ t['read_aloud'] }}" aria-label="{{ t['read_aloud'] }}">
+                    <i class="fas fa-volume-up"></i>
+                </button>
+                
                 {% if session.get('user_id') %}
-                    <!-- Language Selector -->
-                    <select id="lang-select" class="lang-select" onchange="setLanguage(this.value)">
-                        <option value="en" {% if session.get('preferred_language','en')=='en' %}selected{% endif %}>EN — English</option>
-                        <option value="hi" {% if session.get('preferred_language')=='hi' %}selected{% endif %}>हिंदी</option>
-                        <option value="mr" {% if session.get('preferred_language')=='mr' %}selected{% endif %}>मराठी</option>
-                        <option value="as" {% if session.get('preferred_language')=='as' %}selected{% endif %}>অসমীয়া</option>
-                        <option value="bn" {% if session.get('preferred_language')=='bn' %}selected{% endif %}>বাংলা</option>
-                        <option value="mni" {% if session.get('preferred_language')=='mni' %}selected{% endif %}>মৈতৈ</option>
-                    </select>
-                    
-                    <!-- Read Aloud Button -->
-                    <button class="btn-icon" onclick="readPageAloud()" title="Read this page aloud" aria-label="Read page aloud">
-                        <i class="fas fa-volume-up"></i>
-                    </button>
-                    
                     {% if session.get('role') in ('caregiver', 'doctor') %}
-                        <a href="/caregiver-dashboard" class="btn-icon" title="Dashboard"><i class="fas fa-chart-line"></i></a>
+                        <a href="/caregiver-dashboard" class="btn-icon" title="{{ t['cg_dashboard'] }}"><i class="fas fa-chart-line"></i></a>
                     {% else %}
-                        <a href="/dashboard" class="btn-icon" title="Home"><i class="fas fa-home"></i></a>
+                        <a href="/dashboard" class="btn-icon" title="{{ t['nav_home'] }}"><i class="fas fa-home"></i></a>
                     {% endif %}
-                    
                     <a href="/logout" class="btn-icon" title="{{ t['nav_logout'] }}"><i class="fas fa-sign-out-alt"></i></a>
                 {% else %}
                     <a href="/login" class="btn-nav">{{ t['nav_login'] }}</a>
@@ -111,21 +110,27 @@
     <script src="/static/js/main.js"></script>
     <!-- Inject patient language for TTS -- available to ALL scripts on page -->
     <script>
-    // Patient language from Flask session (set by caregiver during patient setup)
-    const PATIENT_LANG = "{{ session.get('preferred_language', session.get('patient_profile', {}).get('language', 'en')) }}";
+    // Patient language from Flask session (set by caregiver during patient setup or selector)
+    const PATIENT_LANG = "{{ current_language }}";
     const PATIENT_LANG_BCP47 = {
-        'hi': 'hi-IN', 'mr': 'mr-IN', 'as': 'as-IN',
+        'hi': 'hi-IN', 'mr': 'mr-IN', 'as': 'bn-IN',
         'bn': 'bn-IN', 'mni': 'bn-IN', 'ta': 'ta-IN', 'en': 'en-IN'
     }[PATIENT_LANG] || 'en-IN';
 
     /**
-     * speakText — global TTS function used on ALL patient-side pages.
-     * Uses PATIENT_LANG so voice is always in the correct language.
-     * Falls back to browser speechSynthesis if backend TTS fails.
+     * speakText — global TTS function used on ALL pages.
+     * Uses active language so voice is always in the correct regional language.
+     * Falls back to browser speechSynthesis if backend TTS stream fails.
      */
     function speakText(text, lang) {
-        const useLang = lang || PATIENT_LANG || 'en';
-        // Try backend TTS first (Google Translate TTS / gTTS)
+        if (!text) return;
+        const useLang = lang || PATIENT_LANG || document.getElementById('lang-select')?.value || 'en';
+        const bcp47 = {
+            'hi': 'hi-IN', 'mr': 'mr-IN', 'as': 'bn-IN',
+            'bn': 'bn-IN', 'mni': 'bn-IN', 'ta': 'ta-IN', 'en': 'en-IN'
+        }[useLang] || 'en-IN';
+
+        // Try backend TTS first (Edge-TTS / Google Translate TTS stream)
         fetch('/api/tts/speak', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -136,21 +141,23 @@
         }).then(blob => {
             const url = URL.createObjectURL(blob);
             const audio = new Audio(url);
-            audio.play();
+            audio.play().catch(() => browserTTSFallback(text, bcp47));
         }).catch(() => {
-            // Browser TTS fallback
-            if ('speechSynthesis' in window) {
-                speechSynthesis.cancel();
-                const u = new SpeechSynthesisUtterance(text);
-                u.lang = PATIENT_LANG_BCP47;
-                u.rate = 0.8;
-                // Pick best matching voice for language
-                const voices = speechSynthesis.getVoices();
-                const match = voices.find(v => v.lang.startsWith(PATIENT_LANG_BCP47.split('-')[0]));
-                if (match) u.voice = match;
-                speechSynthesis.speak(u);
-            }
+            browserTTSFallback(text, bcp47);
         });
+    }
+
+    function browserTTSFallback(text, bcp47) {
+        if ('speechSynthesis' in window) {
+            speechSynthesis.cancel();
+            const u = new SpeechSynthesisUtterance(text);
+            u.lang = bcp47;
+            u.rate = 0.85;
+            const voices = speechSynthesis.getVoices();
+            const match = voices.find(v => v.lang && (v.lang === bcp47 || v.lang.startsWith(bcp47.split('-')[0])));
+            if (match) u.voice = match;
+            speechSynthesis.speak(u);
+        }
     }
     </script>
     {% if session.get('user_id') and session.get('role', 'patient') == 'patient' %}
